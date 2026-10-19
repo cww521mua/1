@@ -180,7 +180,7 @@ function isUserExpired(user: UserRecord, now: number = Date.now()): boolean {
 /**
  * 使用时间卡密注册普通用户。
  */
-function registerUser(username: unknown, password: unknown, cardCode: unknown): any {
+function registerUser(username: unknown, password: unknown, cardCode: unknown, refCode?: unknown): any {
     const name = String(username || '').trim();
     const data = loadUsers();
 
@@ -200,6 +200,16 @@ function registerUser(username: unknown, password: unknown, cardCode: unknown): 
     const now = Date.now();
     const duration = cardStore.normalizeTimeDuration(card);
     const expiresAt = cardStore.computeNextExpiresAt(undefined, duration, now);
+
+    // 可选推广码：填写即绑定邀请关系；30 天及以上卡密注册直接计为有效购买
+    let referrer: UserRecord | null = null;
+    const ref = String(refCode || '').trim().toUpperCase();
+    if (ref) {
+        referrer = findByReferralCode(ref);
+        if (!referrer) return { ok: false, error: '推广码无效' };
+        if (referrer.username === name) return { ok: false, error: '不能使用自己的推广码' };
+    }
+
     const user: UserRecord = {
         username: name,
         password: security.hashPassword(String(password)),
@@ -212,11 +222,20 @@ function registerUser(username: unknown, password: unknown, cardCode: unknown): 
             isPermanent: expiresAt === null,
         },
         accountLimit: DEFAULT_USER_ACCOUNT_LIMIT,
+        referredBy: referrer ? referrer.username : undefined,
         createdAt: now,
         updatedAt: now,
     };
 
+    const qualifies = duration.isPermanent || Number(duration.durationMs || 0) >= REFERRAL_QUALIFY_CARD_MS;
+    if (referrer && qualifies) {
+        user.validPurchaseAt = now;
+    }
+
     data.users.push(user);
+    if (referrer && qualifies) {
+        rewardReferrer(data, user, now);
+    }
     saveUsers(data);
     cardStore.markCardUsed(card, name, name, now);
     clearUserFailedAttempts(name);

@@ -77,9 +77,9 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
-  async function register(username: string, password: string, cardCode: string) {
+  async function register(username: string, password: string, cardCode: string, refCode?: string) {
     try {
-      const res = await api.post('/api/register', { username, password, cardCode }, { skipErrorToast: true } as any)
+      const res = await api.post('/api/register', { username, password, cardCode, refCode: refCode || undefined }, { skipErrorToast: true } as any)
       return res.data
     }
     catch (error: any) {

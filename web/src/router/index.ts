@@ -56,6 +56,11 @@ const router = createRouter({
       redirect: to => ({ name: 'game-mall', query: { ...to.query, tab: 'mystery' }, hash: to.hash }),
     },
     {
+      path: '/register',
+      name: 'register',
+      redirect: to => ({ path: '/login', query: to.query }),
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('@/views/Login.vue'),

@@ -95,19 +95,19 @@ function mountAuthRoutes(app: Application, ctx: AdminContext): void {
         });
     });
 
-    // 卡密注册（公开接口）：仅允许时间卡密注册普通用户
+    // 卡密注册（公开接口）：仅允许时间卡密注册普通用户，可选绑定推广码
     app.post('/api/register', (req: Request, res: Response) => {
-        const { username, password, cardCode } = req.body || {};
+        const { username, password, cardCode, refCode } = req.body || {};
         if (!username || !password || !cardCode) {
             return res.status(400).json({ ok: false, error: '请填写用户名、密码和卡密' });
         }
         const clientIp = getClientIp(req);
-        const result = userStore.registerUser(String(username), String(password), String(cardCode));
+        const result = userStore.registerUser(String(username), String(password), String(cardCode), refCode ? String(refCode) : undefined);
         if (!result.ok) {
             adminLogger.warn('卡密注册失败', { username: String(username), error: result.error, ip: clientIp });
             return res.status(400).json({ ok: false, error: result.error });
         }
-        adminLogger.info('卡密注册成功', { username: result.user.username, ip: clientIp });
+        adminLogger.info('卡密注册成功', { username: result.user.username, referredBy: result.user.referredBy || '', ip: clientIp });
         return res.json({ ok: true, data: { username: result.user.username } });
     });
 

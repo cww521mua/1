@@ -16,6 +16,7 @@ const gameVersion = ref('')
 const mode = ref<'login' | 'register'>('login')
 const registerVia = ref<'card' | 'referral'>('card')
 const refInfo = ref<{ username: string, isAgent: boolean } | null>(null)
+const refInput = ref('')
 const username = ref('')
 const password = ref('')
 const confirmPassword = ref('')
@@ -103,8 +104,16 @@ function switchMode(next: 'login' | 'register') {
   success.value = ''
   password.value = ''
   confirmPassword.value = ''
-  if (next === 'register' && !route.query.ref)
-    registerVia.value = 'card'
+  if (next === 'register') {
+    if (!route.query.ref) {
+      registerVia.value = 'card'
+      refInput.value = ''
+    }
+  }
+  else {
+    refInput.value = ''
+    refInfo.value = null
+  }
 }
 
 async function applyReferralFromQuery() {
@@ -116,10 +125,12 @@ async function applyReferralFromQuery() {
   }
   mode.value = 'register'
   registerVia.value = 'referral'
+  refInput.value = code.toUpperCase()
   refInfo.value = await userStore.fetchReferralInfo(code.toUpperCase())
   if (!refInfo.value) {
     error.value = '推广链接无效，请使用卡密注册'
     registerVia.value = 'card'
+    refInput.value = ''
   }
 }
 
@@ -155,7 +166,12 @@ async function handleSubmit() {
     }
 
     if (mode.value === 'register') {
-      const result = await userStore.register(username.value.trim(), password.value, cardCode.value.trim().toUpperCase())
+      const result = await userStore.register(
+        username.value.trim(),
+        password.value,
+        cardCode.value.trim().toUpperCase(),
+        refInput.value.trim().toUpperCase() || undefined,
+      )
       if (result.ok) {
         success.value = '注册成功，请登录'
         password.value = ''
@@ -333,6 +349,23 @@ onMounted(() => {
             />
             <p class="form-hint">
               时间卡密决定账号有效期；注册后可在设置中使用额度卡密提升账号上限
+            </p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="ref-code">
+              <span class="i-carbon-connect" />
+              推广码<span v-if="registerVia === 'card'">（选填）</span>
+            </label>
+            <BaseInput
+              id="ref-code"
+              v-model="refInput"
+              type="text"
+              :disabled="registerVia === 'referral'"
+              :placeholder="registerVia === 'card' ? '填写邀请人的推广码，可不填' : '来自推广链接'"
+            />
+            <p v-if="registerVia === 'card'" class="form-hint">
+              填写推广码并使用 30 天及以上卡密注册，会给邀请人赠送 2 天时长
             </p>
           </div>
         </template>
