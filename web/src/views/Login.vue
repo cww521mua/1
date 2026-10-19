@@ -7,12 +7,11 @@ import BaseInput from '@/components/ui/BaseInput.vue'
 import BrandMark from '@/components/ui/BrandMark.vue'
 import { useUserStore } from '@/stores/user'
 
-declare const __APP_VERSION__: string
+interface BrandInfo { icon: string, kicker: string, title: string, purchaseText: string, purchaseUrl: string }
 
 const userStore = useUserStore()
 const route = useRoute()
-const appVersion = __APP_VERSION__
-const gameVersion = ref('')
+const brand = ref<BrandInfo>({ icon: '', kicker: 'QQ FARM', title: 'QQ农场智能助手', purchaseText: '', purchaseUrl: '' })
 const mode = ref<'login' | 'register'>('login')
 const registerVia = ref<'card' | 'referral'>('card')
 const refInfo = ref<{ username: string, isAgent: boolean } | null>(null)
@@ -259,20 +258,20 @@ async function handleSubmit() {
   }
 }
 
-async function fetchGameVersion() {
+async function fetchBranding() {
   try {
-    const res = await api.get('/api/game-version')
-    if (res.data.ok)
-      gameVersion.value = res.data.clientVersion
+    const res = await api.get('/api/branding')
+    if (res.data?.ok && res.data.data)
+      brand.value = { ...brand.value, ...res.data.data }
   }
   catch (e) {
-    console.error('获取游戏版本失败:', e)
+    console.error('获取品牌配置失败:', e)
   }
 }
 
 onMounted(() => {
   void applyReferralFromQuery()
-  fetchGameVersion()
+  void fetchBranding()
 })
 </script>
 
@@ -280,17 +279,13 @@ onMounted(() => {
   <main class="login-container">
     <section class="login-card">
       <header class="logo-area">
-        <BrandMark class="logo-icon" :size="58" />
+        <img v-if="brand.icon" :src="brand.icon" alt="logo" class="logo-icon logo-icon-img">
+        <BrandMark v-else class="logo-icon" :size="58" />
         <div>
-          <span class="logo-kicker">QQ FARM</span>
+          <span v-if="brand.kicker" class="logo-kicker">{{ brand.kicker }}</span>
           <h1 class="logo-title">
-            QQ农场智能助手
+            {{ brand.title }}
           </h1>
-          <p class="logo-subtitle">
-            {{ mode === 'login'
-              ? '超级管理员 / 用户登录'
-              : (registerVia === 'referral' ? '推广注册 · 1 小时免费体验' : '使用时间卡密注册账号') }}
-          </p>
         </div>
       </header>
 
@@ -378,9 +373,16 @@ onMounted(() => {
             <p v-if="cardCode && !cardCodeValid.valid" class="form-hint error">
               {{ cardCodeValid.message }}
             </p>
-            <p class="form-hint">
-              时间卡密决定账号有效期；注册后可在设置中使用额度卡密提升账号上限
-            </p>
+            <a
+              v-if="brand.purchaseText && brand.purchaseUrl"
+              :href="brand.purchaseUrl"
+              target="_blank"
+              rel="noopener"
+              class="purchase-link"
+            >
+              <span class="i-carbon-shopping-cart" />
+              {{ brand.purchaseText }}
+            </a>
           </div>
 
           <div class="form-group">
@@ -435,16 +437,6 @@ onMounted(() => {
           {{ mode === 'login' ? '没有账号？使用卡密注册' : '已有账号？返回登录' }}
         </button>
       </div>
-
-      <footer class="card-footer">
-        <div class="footer-info">
-          <span>Web v{{ appVersion }}</span>
-          <span v-if="gameVersion">Game {{ gameVersion }}</span>
-        </div>
-        <a href="https://github.com/liyangpengs/qq-farm-bot" target="_blank" rel="noopener noreferrer" class="github-link" aria-label="GitHub">
-          <span class="i-carbon-logo-github" />
-        </a>
-      </footer>
     </section>
   </main>
 </template>
@@ -503,7 +495,17 @@ onMounted(() => {
   filter: drop-shadow(0 8px 18px rgba(45, 122, 83, 0.24));
 }
 
+.logo-icon-img {
+  width: 58px;
+  height: 58px;
+  border-radius: 14px;
+  object-fit: cover;
+  filter: none;
+  box-shadow: 0 8px 18px rgba(45, 122, 83, 0.18);
+}
+
 .logo-kicker {
+  display: block;
   color: var(--ui-primary);
   font-size: 10px;
   font-weight: 700;
@@ -514,12 +516,6 @@ onMounted(() => {
   font-size: 22px;
   line-height: 1.2;
   letter-spacing: 0;
-}
-
-.logo-subtitle {
-  margin: 5px 0 0;
-  color: var(--ui-muted);
-  font-size: 12px;
 }
 
 .form-area {
@@ -619,35 +615,20 @@ onMounted(() => {
   background: var(--ui-primary-soft);
 }
 
-.card-footer {
-  display: flex;
+.purchase-link {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  margin-top: 22px;
-  padding-top: 17px;
-  border-top: 1px solid var(--ui-border);
-  color: var(--ui-subtle);
-  font-size: 10px;
-}
-
-.footer-info {
-  display: flex;
-  gap: 12px;
-}
-
-.github-link {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border-radius: 8px;
-  color: var(--ui-muted);
-  text-decoration: none;
-}
-
-.github-link:hover {
+  gap: 5px;
+  margin: 0;
   color: var(--ui-primary);
-  background: var(--ui-primary-soft);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  width: fit-content;
+}
+
+.purchase-link:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 480px) {

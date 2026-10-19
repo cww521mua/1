@@ -54,6 +54,8 @@ module.exports = {
     setOfflineReminder: globalConfig.setOfflineReminder,
     getCardSettings: globalConfig.getCardSettings,
     setCardSettings: globalConfig.setCardSettings,
+    getBrand: globalConfig.getBrand,
+    setBrand: globalConfig.setBrand,
     getCaptureConfig: globalConfig.getCaptureConfig,
     setCaptureConfig: globalConfig.setCaptureConfig,
 

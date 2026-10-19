@@ -1,4 +1,4 @@
-import type { AccountConfig, CardSettings, LoginSettings, OfflineReminder, SystemConfig, UIConfig } from '../../types/config';
+import type { AccountConfig, BrandConfig, CardSettings, LoginSettings, OfflineReminder, SystemConfig, UIConfig } from '../../types/config';
 export {};
 
 const { readTextFile, writeJsonFileAtomic } = require('../../services/json-db');
@@ -13,11 +13,24 @@ const {
     DEFAULT_LOGIN_SETTINGS,
     DEFAULT_CAPTURE_CONFIG,
     DEFAULT_CARD_SETTINGS,
+    DEFAULT_BRAND,
     globalConfig,
     normalizeAccountConfig,
     cloneAccountConfig,
     DEFAULT_ACCOUNT_CONFIG,
 } = sharedState;
+
+function normalizeBrand(input: unknown): BrandConfig {
+    const src: Record<string, any> = (input && typeof input === 'object') ? input as Record<string, any> : {};
+    const title = String(src.title ?? DEFAULT_BRAND.title).trim() || DEFAULT_BRAND.title;
+    return {
+        icon: String(src.icon ?? DEFAULT_BRAND.icon).trim(),
+        kicker: String(src.kicker ?? DEFAULT_BRAND.kicker).trim(),
+        title,
+        purchaseText: String(src.purchaseText ?? DEFAULT_BRAND.purchaseText).trim(),
+        purchaseUrl: String(src.purchaseUrl ?? DEFAULT_BRAND.purchaseUrl).trim(),
+    };
+}
 
 function normalizeCardSettings(input: unknown): CardSettings {
     const src: Record<string, any> = (input && typeof input === 'object') ? input as Record<string, any> : {};
@@ -182,6 +195,24 @@ function getCardSettings(): CardSettings {
     return normalizeCardSettings(globalConfig.cardSettings);
 }
 
+function getBrand(): BrandConfig {
+    return normalizeBrand(globalConfig.branding);
+}
+
+function setBrand(cfg: Partial<BrandConfig> | undefined): BrandConfig {
+    const current = getBrand();
+    const src: Record<string, any> = (cfg && typeof cfg === 'object') ? cfg as Record<string, any> : {};
+    globalConfig.branding = normalizeBrand({
+        icon: src.icon !== undefined ? src.icon : current.icon,
+        kicker: src.kicker !== undefined ? src.kicker : current.kicker,
+        title: src.title !== undefined ? src.title : current.title,
+        purchaseText: src.purchaseText !== undefined ? src.purchaseText : current.purchaseText,
+        purchaseUrl: src.purchaseUrl !== undefined ? src.purchaseUrl : current.purchaseUrl,
+    });
+    saveGlobalConfig();
+    return getBrand();
+}
+
 function setCardSettings(cfg: Partial<CardSettings> | undefined): CardSettings {
     const current = normalizeCardSettings(globalConfig.cardSettings);
     const src: Record<string, any> = (cfg && typeof cfg === 'object') ? cfg as Record<string, any> : {};
@@ -252,6 +283,7 @@ loadGlobalConfig();
 // Apply offlineReminder normalization after load
 globalConfig.offlineReminder = normalizeOfflineReminder(globalConfig.offlineReminder);
 globalConfig.loginSettings = normalizeLoginSettings(globalConfig.loginSettings);
+globalConfig.branding = normalizeBrand(globalConfig.branding);
 if (sharedState.systemConfigMigrated) {
     saveGlobalConfig();
     sharedState.systemConfigMigrated = false;
@@ -267,6 +299,8 @@ module.exports = {
     setOfflineReminder,
     getCardSettings,
     setCardSettings,
+    getBrand,
+    setBrand,
     getCaptureConfig,
     setCaptureConfig,
     getSystemConfig,

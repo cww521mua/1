@@ -542,6 +542,17 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
+    // API: 保存登录页品牌配置（管理员专属）
+    app.post('/api/settings/branding', (req: Request, res: Response) => {
+        if (!requireAdminRole(ctx, req, res)) return;
+        try {
+            const saved = store.setBrand(req.body || {});
+            res.json({ ok: true, data: saved });
+        } catch (e: any) {
+            handleApiError(res, e);
+        }
+    });
+
     app.post('/api/settings/system-config', (req: Request, res: Response) => {
         if (!requireAdminRole(ctx, req, res)) return;
         try {

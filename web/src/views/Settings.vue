@@ -172,7 +172,7 @@ onMounted(async () => {
   if (currentAccountId.value)
     await loadStrategyData(currentAccountId.value)
   if (isAdmin) {
-    await Promise.all([loadSystemConfig(), loadDevicePresets()])
+    await Promise.all([loadSystemConfig(), loadDevicePresets(), loadBranding()])
   }
 })
 
@@ -1349,6 +1349,14 @@ const localLoginSettings = ref({
   napCatEndpoint: '',
   napCatSignature: '',
 })
+const localBrand = ref({
+  icon: '',
+  kicker: '',
+  title: '',
+  purchaseText: '',
+  purchaseUrl: '',
+})
+const brandSaving = ref(false)
 const devicePresets = ref<any[]>([])
 const selectedPresetId = ref('')
 const timeZoneOptions = ref([
@@ -1452,6 +1460,47 @@ async function handleSaveLoginSettings() {
   }
   finally {
     loginSettingsSaving.value = false
+  }
+}
+
+function normalizeBrand(source: any) {
+  return {
+    icon: typeof source?.icon === 'string' ? source.icon.trim() : '',
+    kicker: typeof source?.kicker === 'string' ? source.kicker.trim() : '',
+    title: typeof source?.title === 'string' && source.title.trim() ? source.title.trim() : 'QQ农场智能助手',
+    purchaseText: typeof source?.purchaseText === 'string' ? source.purchaseText.trim() : '',
+    purchaseUrl: typeof source?.purchaseUrl === 'string' ? source.purchaseUrl.trim() : '',
+  }
+}
+
+async function loadBranding() {
+  try {
+    const { data } = await api.get('/api/branding')
+    if (data?.ok)
+      localBrand.value = normalizeBrand(data.data)
+  }
+  catch (e) {
+    console.error('加载品牌配置失败:', e)
+  }
+}
+
+async function handleSaveBranding() {
+  if (!localBrand.value.title.trim()) {
+    showAlert('主标题不能为空', 'danger')
+    return
+  }
+  brandSaving.value = true
+  try {
+    const { data } = await api.post('/api/settings/branding', localBrand.value)
+    if (data?.ok)
+      localBrand.value = normalizeBrand(data.data)
+    showAlert(data?.ok ? '品牌设置已保存' : getApiErrorMessage(data, '保存失败'), data?.ok ? 'primary' : 'danger')
+  }
+  catch (e: any) {
+    showAlert(`保存失败: ${getApiErrorMessage(e, '未知错误')}`, 'danger')
+  }
+  finally {
+    brandSaving.value = false
   }
 }
 
@@ -2178,6 +2227,66 @@ async function handleResetSystemConfig() {
                     @click="handleSaveLoginSettings"
                   >
                     保存登录设置
+                  </BaseButton>
+                </div>
+              </section>
+
+              <section class="farm-card rounded-lg p-4">
+                <div class="mb-4 flex items-start gap-3">
+                  <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-lg bg-pink-50 text-pink-600 dark:bg-pink-900/25 dark:text-pink-400">
+                    <span class="i-carbon-image text-xl" />
+                  </div>
+                  <div>
+                    <h4 class="text-base text-gray-900 font-bold dark:text-gray-100">
+                      品牌设置
+                    </h4>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      自定义登录页的图标、标题和注册页的购买链接
+                    </p>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <BaseInput
+                    v-model="localBrand.title"
+                    label="主标题"
+                    type="text"
+                    placeholder="QQ农场智能助手"
+                  />
+                  <BaseInput
+                    v-model="localBrand.kicker"
+                    label="顶部小字"
+                    type="text"
+                    placeholder="留空则隐藏，如 QQ FARM"
+                  />
+                  <BaseInput
+                    v-model="localBrand.icon"
+                    label="图标地址（URL）"
+                    type="text"
+                    placeholder="留空使用默认图标"
+                  />
+                  <BaseInput
+                    v-model="localBrand.purchaseText"
+                    label="购买链接文字"
+                    type="text"
+                    placeholder="留空则不显示，如：购买卡密"
+                  />
+                  <BaseInput
+                    v-model="localBrand.purchaseUrl"
+                    label="购买链接地址"
+                    type="text"
+                    placeholder="https://..."
+                  />
+                </div>
+
+                <div class="mt-3 flex justify-end border-t pt-3 dark:border-gray-700">
+                  <BaseButton
+                    variant="primary"
+                    size="sm"
+                    :loading="brandSaving"
+                    @click="handleSaveBranding"
+                  >
+                    保存品牌设置
                   </BaseButton>
                 </div>
               </section>

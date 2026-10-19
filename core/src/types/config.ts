@@ -114,6 +114,19 @@ export interface CardSettings {
   accountLimit: number;
 }
 
+export interface BrandConfig {
+  /** 登录页图标图片地址；留空使用默认图标 */
+  icon: string;
+  /** 登录页顶部小字；留空隐藏 */
+  kicker: string;
+  /** 登录页主标题 */
+  title: string;
+  /** 注册页卡密下方购买链接文字；与 purchaseUrl 同时非空才显示 */
+  purchaseText: string;
+  /** 购买链接地址 */
+  purchaseUrl: string;
+}
+
 export interface UIConfig {
   theme: 'light' | 'dark';
 }
@@ -161,6 +174,7 @@ export interface GlobalConfig {
   loginSettings: LoginSettings;
   offlineReminder: OfflineReminder;
   cardSettings: CardSettings;
+  branding: BrandConfig;
   systemConfig: SystemConfig | null;
   captureConfig: CaptureConfig;
 }
