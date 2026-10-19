@@ -37,11 +37,8 @@ const sidebarTooltipTheme = {
 
 const showAccountDropdown = ref(false)
 const showUserDropdown = ref(false)
-const showTokenDropdown = ref(false)
 const showAccountModal = ref(false)
 const showRemarkModal = ref(false)
-const tokenVisible = ref(false)
-const tokenCopied = ref(false)
 const accountToEdit = ref<any>(null)
 const wsErrorNotifiedAt = ref<Record<string, number>>({})
 const accountAvatarErrors = ref<Set<string>>(new Set())
@@ -57,7 +54,6 @@ function handleUserAvatarError(event: Event) {
 
 const systemConnected = ref(true)
 const serverUptimeBase = ref(0)
-const serverVersion = ref('')
 const lastPingTime = ref(Date.now())
 const now = useNow({ interval: 1000 })
 const formattedTime = useDateFormat(now, 'YYYY-MM-DD HH:mm:ss')
@@ -70,9 +66,6 @@ async function checkConnection() {
       if (res.data.data.uptime) {
         serverUptimeBase.value = res.data.data.uptime
         lastPingTime.value = Date.now()
-      }
-      if (res.data.data.version) {
-        serverVersion.value = res.data.data.version
       }
     }
     const accountRef = currentAccount.value?.id || currentAccount.value?.uin
@@ -134,32 +127,19 @@ function getAccountAvatar(account: any) {
 
 function toggleUserDropdown() {
   showUserDropdown.value = !showUserDropdown.value
-  if (showUserDropdown.value) {
+  if (showUserDropdown.value)
     showAccountDropdown.value = false
-    showTokenDropdown.value = false
-  }
 }
 
 function toggleAccountDropdown() {
   showAccountDropdown.value = !showAccountDropdown.value
-  if (showAccountDropdown.value) {
+  if (showAccountDropdown.value)
     showUserDropdown.value = false
-    showTokenDropdown.value = false
-  }
-}
-
-function toggleTokenDropdown() {
-  showTokenDropdown.value = !showTokenDropdown.value
-  if (showTokenDropdown.value) {
-    showUserDropdown.value = false
-    showAccountDropdown.value = false
-  }
 }
 
 function closeFlyouts() {
   showUserDropdown.value = false
   showAccountDropdown.value = false
-  showTokenDropdown.value = false
 }
 
 function canShowAccountAvatar(account: any) {
@@ -296,8 +276,6 @@ function selectAccount(acc: any) {
   showAccountDropdown.value = false
 }
 
-const version = __APP_VERSION__
-
 watch(
   () => route.path,
   () => {
@@ -312,23 +290,6 @@ watch(isSidebarCollapsed, closeFlyouts)
 async function handleLogout() {
   await userStore.logout()
   router.push('/login')
-}
-
-async function copyToken() {
-  const tokenValue = userStore.token
-  if (!tokenValue)
-    return
-
-  try {
-    await navigator.clipboard.writeText(tokenValue)
-    tokenCopied.value = true
-    setTimeout(() => {
-      tokenCopied.value = false
-    }, 2000)
-  }
-  catch (e) {
-    console.error('复制失败', e)
-  }
 }
 </script>
 
@@ -632,67 +593,6 @@ async function copyToken() {
       </NTooltip>
     </nav>
 
-    <!-- Token Display (All Users) -->
-    <div v-if="userStore.token" class="sidebar-token relative border-t border-gray-200/40 px-3 py-2 dark:border-gray-700/40">
-      <NTooltip
-        :disabled="!isSidebarCollapsed || showTokenDropdown"
-        placement="right"
-        :show-arrow="false"
-        :theme-overrides="sidebarTooltipTheme"
-      >
-        <template #trigger>
-          <button
-            type="button"
-            class="sidebar-token__trigger w-full flex items-center justify-between rounded-xl px-3 py-2 transition-colors hover:bg-gray-100/50 dark:hover:bg-gray-700/50"
-            aria-haspopup="true"
-            :aria-expanded="showTokenDropdown"
-            :aria-label="isSidebarCollapsed ? '我的 Token' : undefined"
-            @click="toggleTokenDropdown"
-          >
-            <div class="flex items-center gap-2">
-              <div class="i-carbon-password text-base" :style="{ color: 'var(--theme-primary)' }" />
-              <span v-show="!isSidebarCollapsed" class="text-xs text-gray-500 font-medium dark:text-gray-400">我的 Token</span>
-            </div>
-            <div
-              v-show="!isSidebarCollapsed"
-              class="i-carbon-chevron-down text-gray-400 transition-transform duration-200"
-              :class="{ 'rotate-180': showTokenDropdown }"
-            />
-          </button>
-        </template>
-        我的 Token · 点击查看
-      </NTooltip>
-      <div
-        v-show="showTokenDropdown"
-        class="sidebar-token__details px-1 pt-2 transition-all"
-      >
-        <div class="token-field" :class="{ 'is-revealed': tokenVisible }">
-          <code class="token-field__value">
-            {{ tokenVisible ? userStore.token : '••••••••••••••••' }}
-          </code>
-          <button
-            type="button"
-            class="token-field__action"
-            :title="tokenVisible ? '隐藏 Token' : '显示 Token'"
-            :aria-label="tokenVisible ? '隐藏 Token' : '显示 Token'"
-            @click="tokenVisible = !tokenVisible"
-          >
-            <span :class="tokenVisible ? 'i-carbon-view-off' : 'i-carbon-view'" />
-          </button>
-          <button
-            type="button"
-            class="token-field__action"
-            :class="{ 'is-done': tokenCopied }"
-            :title="tokenCopied ? '已复制' : '复制 Token'"
-            :aria-label="tokenCopied ? '已复制' : '复制 Token'"
-            @click="copyToken"
-          >
-            <span :class="tokenCopied ? 'i-carbon-checkmark' : 'i-carbon-copy'" />
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- Footer Status -->
     <div class="sidebar-footer relative mt-auto p-4">
       <template v-if="!isSidebarCollapsed">
@@ -709,21 +609,6 @@ async function copyToken() {
         <div class="mt-1 flex flex-col gap-0.5 text-xs text-gray-400 font-mono">
           <div class="flex items-center justify-between">
             <span>{{ formattedTime }}</span>
-          </div>
-          <div class="flex items-center justify-between opacity-50">
-            <div class="flex items-center gap-2">
-              <span>Web v{{ version }}</span>
-              <a
-                href="https://github.com/liyangpengs/qq-farm-bot"
-                target="_blank"
-                rel="noopener noreferrer"
-                title="开源地址"
-                class="inline-flex items-center text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-300"
-              >
-                <div class="i-carbon-logo-github text-base" />
-              </a>
-            </div>
-            <span v-if="serverVersion">Core v{{ serverVersion }}</span>
           </div>
         </div>
       </template>
@@ -754,32 +639,13 @@ async function copyToken() {
             <span>{{ formattedTime }}</span>
           </div>
         </NTooltip>
-        <NTooltip placement="right" :show-arrow="false" :theme-overrides="sidebarTooltipTheme">
-          <template #trigger>
-            <a
-              class="sidebar-footer__icon"
-              href="https://github.com/liyangpengs/qq-farm-bot"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="查看项目版本与开源地址"
-            >
-              <span class="i-carbon-information text-lg" />
-            </a>
-          </template>
-          <div class="sidebar-tooltip-content">
-            <strong>版本信息</strong>
-            <span>Web v{{ version }}</span>
-            <span v-if="serverVersion">Core v{{ serverVersion }}</span>
-            <span>点击访问开源地址</span>
-          </div>
-        </NTooltip>
       </div>
     </div>
   </aside>
 
   <!-- Overlay for mobile when sidebar is open -->
   <div
-    v-if="showAccountDropdown || showUserDropdown || showTokenDropdown"
+    v-if="showAccountDropdown || showUserDropdown"
     class="fixed inset-0 z-40 bg-transparent"
     @click="closeFlyouts"
   />
@@ -825,86 +691,6 @@ async function copyToken() {
   filter: drop-shadow(0 2px 6px rgba(45, 122, 83, 0.22));
 }
 
-.token-field {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  min-height: 36px;
-  padding: 3px 3px 3px 10px;
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-control);
-  background: var(--glass-input);
-}
-
-.token-field__value {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  color: var(--ui-muted);
-  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  line-height: 1.45;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.token-field.is-revealed .token-field__value {
-  color: var(--ui-ink);
-  letter-spacing: 0;
-  white-space: normal;
-  word-break: break-all;
-}
-
-.token-field__action {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  border-radius: 7px;
-  color: var(--ui-muted);
-  font-size: 14px;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
-}
-
-.token-field__action:hover {
-  color: var(--ui-primary);
-  background: var(--ui-primary-soft);
-}
-
-.token-field__action.is-done {
-  color: var(--ui-primary);
-}
-
-.token-field__action:focus-visible,
-.token-reset:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--ui-primary) 55%, transparent);
-  outline-offset: 1px;
-}
-
-.token-reset {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 6px;
-  padding: 4px 6px;
-  border-radius: 7px;
-  color: var(--ui-subtle);
-  font-size: 12px;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
-}
-
-.token-reset:hover {
-  color: var(--ui-danger);
-  background: var(--ui-danger-soft);
-}
-
 .sidebar-control {
   border: 1px solid var(--ui-border);
   border-radius: 12px;
@@ -918,7 +704,6 @@ async function copyToken() {
 }
 
 .sidebar-control:focus-visible,
-.sidebar-token__trigger:focus-visible,
 .sidebar-nav__link:focus-visible,
 .sidebar-footer__icon:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--ui-primary) 55%, transparent);
@@ -1174,34 +959,6 @@ nav a:hover {
   .app-sidebar.is-collapsed .nav-icon {
     width: 20px;
     height: 20px;
-  }
-
-  .app-sidebar.is-collapsed .sidebar-token {
-    padding: 8px 11px;
-  }
-
-  .app-sidebar.is-collapsed .sidebar-token__trigger {
-    min-height: 42px;
-    justify-content: center;
-    padding: 0;
-  }
-
-  .app-sidebar.is-collapsed .sidebar-token__details {
-    position: absolute;
-    z-index: 50;
-    width: 280px;
-    left: calc(100% + 12px);
-    bottom: 0;
-    padding: 12px;
-    border: 1px solid var(--ui-border);
-    border-radius: 12px;
-    color: var(--ui-ink);
-    background: var(--ui-surface-strong);
-    box-shadow:
-      inset 0 1px 0 var(--glass-highlight),
-      var(--ui-shadow-lg);
-    -webkit-backdrop-filter: blur(18px) saturate(145%);
-    backdrop-filter: blur(18px) saturate(145%);
   }
 
   .app-sidebar.is-collapsed .sidebar-footer {

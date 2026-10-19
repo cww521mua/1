@@ -25,7 +25,7 @@ const DEFAULT_USER_ACCOUNT_LIMIT: number = 2;
 const REFERRAL_TRIAL_MS: number = HOUR_MS;
 const REFERRAL_AGENT_TARGET: number = 10;
 const REFERRAL_QUALIFY_CARD_MS: number = 30 * DAY_MS;
-const REFERRAL_REWARD_MS: number = 2 * DAY_MS;
+const REFERRAL_REWARD_MS: number = 5 * DAY_MS;
 const REFERRAL_CODE_LENGTH: number = 8;
 
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -331,7 +331,7 @@ function renewUser(username: unknown, cardCode: unknown): any {
     }
     user.updatedAt = now;
 
-    // 推广奖励：被推广人核销 ≥30 天（或永久）时间卡 → 推广人账号 +2 天
+    // 推广奖励：被推广人核销 ≥30 天（或永久）时间卡 → 推广人账号 +5 天
     let referrerRewarded = false;
     if (card.type === 'time' && qualifyingDurationMs >= REFERRAL_QUALIFY_CARD_MS && user.referredBy) {
         const result = rewardReferrer(data, user, now);
@@ -438,7 +438,7 @@ function registerUserByReferral(username: unknown, password: unknown, refCode: u
 }
 
 /**
- * 被推广人核销 ≥30 天时间卡后，给推广人账号续 2 天，并记录有效购买。
+ * 被推广人核销 ≥30 天时间卡后，给推广人账号续 5 天，并记录有效购买。
  */
 function rewardReferrer(data: UsersData, referredUser: UserRecord, now: number): boolean {
     const referrer = data.users.find(item => item.username === referredUser.referredBy);

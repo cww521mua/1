@@ -401,7 +401,7 @@ onMounted(() => {
               {{ refCodeValid.message }}
             </p>
             <p v-if="registerVia === 'card'" class="form-hint">
-              填写推广码并使用 30 天及以上卡密注册，会给邀请人赠送 2 天时长
+              填写推广码并使用 30 天及以上卡密注册，会给邀请人赠送 5 天时长
             </p>
           </div>
         </template>
@@ -444,11 +444,11 @@ onMounted(() => {
 <style scoped>
 .login-container {
   position: relative;
-  display: grid;
+  display: flex;
   width: 100%;
   min-height: 100dvh;
-  place-items: center;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 28px 18px;
   color: var(--ui-ink);
   background-color: var(--ui-bg);
@@ -471,6 +471,7 @@ onMounted(() => {
   position: relative;
   z-index: 1;
   width: min(430px, 100%);
+  margin: auto;
   padding: 30px;
   border: 1px solid var(--ui-border);
   border-radius: 18px;
@@ -633,7 +634,7 @@ onMounted(() => {
 
 @media (max-width: 480px) {
   .login-container {
-    align-items: center;
+    align-items: flex-start;
     padding: 16px 12px;
   }
 
