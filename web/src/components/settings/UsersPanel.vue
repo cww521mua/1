@@ -6,6 +6,7 @@ import ConfirmModal from '@/components/ConfirmModal.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseSwitch from '@/components/ui/BaseSwitch.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
 import api from '@/api'
 import { useToastStore } from '@/stores/toast'
 
@@ -209,11 +210,12 @@ onMounted(fetchUsers)
       <div>加载中...</div>
     </div>
 
-    <div v-else-if="filteredUsers.length === 0" class="farm-card rounded-2xl bg-white py-12 text-center shadow-md dark:bg-gray-800">
-      <div class="i-carbon-user-multiple mb-4 inline-block text-4xl text-gray-400" />
-      <p class="text-gray-500">
-        暂无注册用户，用户可在登录页使用时间卡密注册
-      </p>
+    <div v-else-if="filteredUsers.length === 0">
+      <EmptyState
+        title="暂无注册用户"
+        description="用户可在登录页使用时间卡密注册，或通过推广链接免卡密注册"
+        icon="i-carbon-user-multiple"
+      />
     </div>
 
     <div v-else class="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
@@ -261,6 +263,7 @@ onMounted(fetchUsers)
             variant="ghost"
             class="min-h-[36px] min-w-[36px] !p-2"
             title="编辑"
+            aria-label="编辑用户"
             @click="openEditModal(user)"
           >
             <span class="i-carbon-edit" />
@@ -269,6 +272,7 @@ onMounted(fetchUsers)
             variant="ghost"
             class="min-h-[36px] min-w-[36px] text-red-500 !p-2 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300"
             title="删除"
+            aria-label="删除用户"
             @click="requestDelete(user)"
           >
             <span class="i-carbon-trash-can" />

@@ -12,7 +12,9 @@ import { getPlatformLabel, useAccountStore } from '@/stores/account'
 import { useBagStore } from '@/stores/bag'
 import { useStatusStore } from '@/stores/status'
 import { useToastStore } from '@/stores/toast'
+import { useRouter } from 'vue-router'
 
+const router = useRouter()
 const statusStore = useStatusStore()
 const accountStore = useAccountStore()
 const bagStore = useBagStore()
@@ -24,6 +26,8 @@ const {
   realtimeConnected,
 } = storeToRefs(statusStore)
 const { currentAccountId, currentAccount } = storeToRefs(accountStore)
+const { accounts } = storeToRefs(accountStore)
+const noAccounts = computed(() => accounts.value.length === 0)
 const isOnline = computed(() => !!currentAccount.value?.running && status.value?.connection?.connected === true)
 const { dashboardItems } = storeToRefs(bagStore)
 const logContainer = ref<HTMLElement | null>(null)
@@ -509,6 +513,22 @@ useIntervalFn(updateCountdowns, 1000)
 
 <template>
   <div class="page-stack flex flex-col gap-5">
+    <!-- 首次使用引导：还没有任何游戏账号时展示 -->
+    <section v-if="noAccounts" class="ov-card p-5">
+      <EmptyState
+        title="欢迎使用 QQ 农场智能助手"
+        description="三步开始挂机：① 在设置页添加游戏账号（支持抓包 Code、微信扫码、QQ 扫码）→ ② 配置种植与好友策略 → ③ 启动账号，之后这里会显示实时状态与收益"
+        icon="i-carbon-sprout"
+      >
+        <BaseButton variant="primary" size="sm" @click="router.push('/settings?tab=account')">
+          前往添加账号
+        </BaseButton>
+        <BaseButton variant="secondary" size="sm" @click="router.push('/settings?tab=strategy')">
+          查看种植策略
+        </BaseButton>
+      </EmptyState>
+    </section>
+
     <!-- Overview -->
     <div class="overview-grid">
       <!-- 账号：身份、在线状态与等级进度 -->

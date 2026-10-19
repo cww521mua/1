@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
 import { copyTextToClipboard } from '@/stores/card'
 import api from '@/api'
 import { useToastStore } from '@/stores/toast'
@@ -107,11 +108,12 @@ onMounted(loadReferral)
         </div>
       </div>
 
-      <div v-if="!isUser" class="farm-card rounded-2xl bg-white py-12 text-center shadow-md dark:bg-gray-800">
-        <div class="i-carbon-connect mb-4 inline-block text-4xl text-gray-400" />
-        <p class="text-gray-500">
-          推广功能面向普通用户
-        </p>
+      <div v-if="!isUser">
+        <EmptyState
+          title="推广功能面向普通用户"
+          description="普通用户登录后，可在本页查看推广码、被推广人与代理进度"
+          icon="i-carbon-connect"
+        />
       </div>
 
       <template v-else>
@@ -220,11 +222,13 @@ onMounted(loadReferral)
               </div>
             </div>
 
-            <div v-if="overview.referred.length === 0" class="rounded-2xl bg-white py-10 text-center dark:bg-gray-800">
-              <div class="i-carbon-user-follow mb-3 inline-block text-3xl text-gray-400" />
-              <p class="text-sm text-gray-500">
-                还没有绑定被推广人，快把链接分享出去吧
-              </p>
+            <div v-if="overview.referred.length === 0">
+              <EmptyState
+                bare
+                title="还没有绑定被推广人"
+                description="复制上方推广链接分享出去，好友注册后自动绑定到这里"
+                icon="i-carbon-user-follow"
+              />
             </div>
 
             <div v-else class="space-y-2">

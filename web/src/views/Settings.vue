@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import api, { getApiErrorMessage } from '@/api'
 import AccountModal from '@/components/AccountModal.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
 import AutomationSettingsForm from '@/components/settings/AutomationSettingsForm.vue'
 import BagSeedPriorityItem from '@/components/settings/BagSeedPriorityItem.vue'
 import CardKeyPanel from '@/components/settings/CardKeyPanel.vue'
@@ -1541,19 +1542,16 @@ async function handleResetSystemConfig() {
             <div>加载中...</div>
           </div>
 
-          <div v-else-if="accounts.length === 0" class="farm-card rounded-2xl bg-white py-12 text-center shadow-md dark:bg-gray-800">
-            <div class="i-carbon-user-avatar mb-4 inline-block text-4xl text-gray-400" />
-            <p class="mb-4 text-gray-500">
-              暂无账号
-            </p>
-            <BaseButton
-              variant="text"
-              size="sm"
-              @click="openAddModal"
-            >
+          <EmptyState
+            v-else-if="accounts.length === 0"
+            title="暂无账号"
+            description="添加游戏账号后即可开始挂机，支持抓包 Code、微信扫码与 QQ 扫码登录"
+            icon="i-carbon-user-avatar"
+          >
+            <BaseButton variant="primary" size="sm" @click="openAddModal">
               立即添加
             </BaseButton>
-          </div>
+          </EmptyState>
 
           <div v-else class="grid grid-cols-1 gap-4 lg:grid-cols-3 sm:grid-cols-2 xl:grid-cols-4">
             <div
@@ -1635,6 +1633,7 @@ async function handleResetSystemConfig() {
                     variant="ghost"
                     class="min-h-[36px] min-w-[36px] !p-2"
                     title="设置"
+                    aria-label="打开账号设置"
                     @click="openSettings(acc)"
                   >
                     <span class="i-carbon-settings" />
@@ -1643,6 +1642,7 @@ async function handleResetSystemConfig() {
                     variant="ghost"
                     class="min-h-[36px] min-w-[36px] !p-2"
                     title="编辑"
+                    aria-label="编辑账号"
                     @click="openEditModal(acc)"
                   >
                     <span class="i-carbon-edit" />
@@ -1651,6 +1651,7 @@ async function handleResetSystemConfig() {
                     variant="ghost"
                     class="min-h-[36px] min-w-[36px] text-red-500 !p-2 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300"
                     title="删除"
+                    aria-label="删除账号"
                     @click="handleDelete(acc)"
                   >
                     <span class="i-carbon-trash-can" />

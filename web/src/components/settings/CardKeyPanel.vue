@@ -5,6 +5,7 @@ import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
 import BaseSwitch from '@/components/ui/BaseSwitch.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
 import { storeToRefs } from 'pinia'
 import { useAccountStore } from '@/stores/account'
 import {
@@ -163,6 +164,16 @@ function toggleSelectCard(code: string) {
     selectedCodes.value.delete(code)
   else
     selectedCodes.value.add(code)
+}
+
+function clearSelection() {
+  selectedCodes.value.clear()
+}
+
+function focusCreateForm() {
+  const input = document.querySelector<HTMLInputElement>('#new-card-description')
+  input?.focus()
+  input?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 async function handleCopyCode(code: string) {
@@ -367,6 +378,7 @@ onMounted(async () => {
           :options="cardTypeOptions"
         />
         <BaseInput
+          id="new-card-description"
           v-model="newCardForm.description"
           label="卡密描述"
           type="text"
@@ -531,14 +543,41 @@ onMounted(async () => {
         <div>加载中...</div>
       </div>
 
-      <div v-else-if="filteredCards.length === 0" class="rounded-2xl bg-white py-12 text-center dark:bg-gray-800">
-        <div class="i-carbon-ticket mb-4 inline-block text-4xl text-gray-400" />
-        <p class="text-gray-500">
-          暂无卡密，先在上方生成
-        </p>
+      <div v-else-if="filteredCards.length === 0">
+        <EmptyState
+          title="暂无卡密"
+          description="在上方选择类型与时长后生成，批量生成会自动导出文本文件"
+          icon="i-carbon-ticket"
+        >
+          <BaseButton variant="primary" size="sm" @click="focusCreateForm">
+            去生成卡密
+          </BaseButton>
+        </EmptyState>
       </div>
 
       <div v-else class="space-y-2">
+        <!-- 选中操作条：滚动到列表深处也能看到选中数量与批量操作 -->
+        <div
+          v-if="selectedCount > 0"
+          class="sticky z-20 flex items-center justify-between gap-2 rounded-xl border px-3 py-2"
+          :style="{ top: 'calc(var(--sticky-top, 0px) + 8px)', backgroundColor: 'var(--ui-surface)', borderColor: 'var(--ui-border)' }"
+        >
+          <span class="text-sm font-medium text-gray-900 dark:text-gray-100">
+            已选 {{ selectedCount }} 个
+          </span>
+          <div class="flex gap-2">
+            <BaseButton variant="secondary" size="sm" @click="handleCopySelected">
+              复制
+            </BaseButton>
+            <BaseButton variant="danger" size="sm" @click="requestDeleteSelected">
+              删除
+            </BaseButton>
+            <BaseButton variant="ghost" size="sm" @click="clearSelection">
+              取消
+            </BaseButton>
+          </div>
+        </div>
+
         <label class="flex items-center gap-2 px-1 text-sm text-gray-500 dark:text-gray-400">
           <input
             type="checkbox"
@@ -606,6 +645,7 @@ onMounted(async () => {
                 variant="ghost"
                 class="min-h-[36px] min-w-[36px] !p-2"
                 title="复制卡密"
+                aria-label="复制卡密"
                 @click="handleCopyCode(card.code)"
               >
                 <span class="i-carbon-copy" />
@@ -615,6 +655,7 @@ onMounted(async () => {
                 variant="ghost"
                 class="min-h-[36px] min-w-[36px] !p-2"
                 :title="card.enabled ? '禁用' : '启用'"
+                :aria-label="card.enabled ? '禁用卡密' : '启用卡密'"
                 @click="cardStore.toggleCard(card)"
               >
                 <span :class="card.enabled ? 'i-carbon-invisible' : 'i-carbon-view'" />
@@ -623,6 +664,7 @@ onMounted(async () => {
                 variant="ghost"
                 class="min-h-[36px] min-w-[36px] text-red-500 !p-2 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300"
                 title="删除"
+                aria-label="删除卡密"
                 @click="requestDeleteCard(card)"
               >
                 <span class="i-carbon-trash-can" />

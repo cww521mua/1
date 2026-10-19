@@ -68,6 +68,24 @@ const confirmPasswordValid = computed(() => {
   return { valid: true, message: '' }
 })
 
+const cardCodeValid = computed(() => {
+  const code = cardCode.value.trim().toUpperCase()
+  if (!code)
+    return { valid: true, message: '' }
+  if (!/^[A-Z0-9]{16}$/.test(code))
+    return { valid: false, message: '卡密为 16 位大写字母或数字' }
+  return { valid: true, message: '' }
+})
+
+const refCodeValid = computed(() => {
+  const code = refInput.value.trim().toUpperCase()
+  if (!code || registerVia.value === 'referral')
+    return { valid: true, message: '' }
+  if (!/^[A-Z0-9]{8}$/.test(code))
+    return { valid: false, message: '推广码为 8 位大写字母或数字' }
+  return { valid: true, message: '' }
+})
+
 function validateForm(): boolean {
   if (!username.value) {
     error.value = '请输入用户名'
@@ -90,8 +108,18 @@ function validateForm(): boolean {
       error.value = confirmPasswordValid.value.message || '请再次输入密码'
       return false
     }
-    if (registerVia.value === 'card' && !cardCode.value.trim()) {
-      error.value = '请输入卡密'
+    if (registerVia.value === 'card') {
+      if (!cardCodeValid.value.valid) {
+        error.value = cardCodeValid.value.message
+        return false
+      }
+      if (!cardCode.value.trim()) {
+        error.value = '请输入卡密'
+        return false
+      }
+    }
+    if (!refCodeValid.value.valid) {
+      error.value = refCodeValid.value.message
       return false
     }
   }
@@ -347,6 +375,9 @@ onMounted(() => {
               placeholder="请输入 16 位时间卡密"
               required
             />
+            <p v-if="cardCode && !cardCodeValid.valid" class="form-hint error">
+              {{ cardCodeValid.message }}
+            </p>
             <p class="form-hint">
               时间卡密决定账号有效期；注册后可在设置中使用额度卡密提升账号上限
             </p>
@@ -364,6 +395,9 @@ onMounted(() => {
               :disabled="registerVia === 'referral'"
               :placeholder="registerVia === 'card' ? '填写邀请人的推广码，可不填' : '来自推广链接'"
             />
+            <p v-if="refInput && !refCodeValid.valid" class="form-hint error">
+              {{ refCodeValid.message }}
+            </p>
             <p v-if="registerVia === 'card'" class="form-hint">
               填写推广码并使用 30 天及以上卡密注册，会给邀请人赠送 2 天时长
             </p>
