@@ -26,6 +26,8 @@ const REFERRAL_TRIAL_MS: number = HOUR_MS;
 const REFERRAL_AGENT_TARGET: number = 10;
 const REFERRAL_QUALIFY_CARD_MS: number = 30 * DAY_MS;
 const REFERRAL_REWARD_MS: number = 5 * DAY_MS;
+// 被推广人奖励：使用 ≥30 天时间卡注册/续费时，本人额外获得的时长
+const REFERRAL_REFEREE_BONUS_MS: number = 2 * DAY_MS;
 const REFERRAL_CODE_LENGTH: number = 8;
 
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -199,7 +201,7 @@ function registerUser(username: unknown, password: unknown, cardCode: unknown, r
 
     const now = Date.now();
     const duration = cardStore.normalizeTimeDuration(card);
-    const expiresAt = cardStore.computeNextExpiresAt(undefined, duration, now);
+    let expiresAt = cardStore.computeNextExpiresAt(undefined, duration, now);
 
     // 可选推广码：填写即绑定邀请关系；30 天及以上卡密注册直接计为有效购买
     let referrer: UserRecord | null = null;
@@ -208,6 +210,12 @@ function registerUser(username: unknown, password: unknown, cardCode: unknown, r
         referrer = findByReferralCode(ref);
         if (!referrer) return { ok: false, error: '推广码无效' };
         if (referrer.username === name) return { ok: false, error: '不能使用自己的推广码' };
+    }
+
+    const qualifies = duration.isPermanent || Number(duration.durationMs || 0) >= REFERRAL_QUALIFY_CARD_MS;
+    // 被推广人奖励：使用 ≥30 天时间卡注册 → 本人在卡密时长之外额外 +2 天（永久卡无需加）
+    if (referrer && qualifies && expiresAt !== null) {
+        expiresAt += REFERRAL_REFEREE_BONUS_MS;
     }
 
     const user: UserRecord = {
@@ -227,7 +235,6 @@ function registerUser(username: unknown, password: unknown, cardCode: unknown, r
         updatedAt: now,
     };
 
-    const qualifies = duration.isPermanent || Number(duration.durationMs || 0) >= REFERRAL_QUALIFY_CARD_MS;
     if (referrer && qualifies) {
         user.validPurchaseAt = now;
     }
@@ -321,7 +328,11 @@ function renewUser(username: unknown, cardCode: unknown): any {
     } else {
         const duration = cardStore.normalizeTimeDuration(card);
         qualifyingDurationMs = duration.isPermanent ? Number.MAX_SAFE_INTEGER : Number(duration.durationMs || 0);
-        const expiresAt = cardStore.computeNextExpiresAt(user.card.expiresAt, duration, now);
+        let expiresAt = cardStore.computeNextExpiresAt(user.card.expiresAt, duration, now);
+        // 被推广人奖励：使用 ≥30 天时间卡续费 → 本人在叠加时长之外额外 +2 天（永久卡无需加）
+        if (qualifyingDurationMs >= REFERRAL_QUALIFY_CARD_MS && user.referredBy && expiresAt !== null) {
+            expiresAt += REFERRAL_REFEREE_BONUS_MS;
+        }
         user.card = {
             code: card.code,
             description: card.description,

@@ -401,7 +401,7 @@ onMounted(() => {
               {{ refCodeValid.message }}
             </p>
             <p v-if="registerVia === 'card'" class="form-hint">
-              填写推广码并使用 30 天及以上卡密注册，会给邀请人赠送 5 天时长
+              填写推广码并使用 30 天及以上卡密注册，你会额外获得 2 天时长，邀请人获得 5 天时长
             </p>
           </div>
         </template>
@@ -446,7 +446,7 @@ onMounted(() => {
   position: relative;
   display: flex;
   width: 100%;
-  min-height: 100dvh;
+  height: 100dvh;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 28px 18px;
