@@ -3,6 +3,7 @@ const sharedState = require('./shared-state');
 const globalConfig = require('./global-config');
 const accountConfig = require('./account-config');
 const accounts = require('./accounts');
+const brandIcon = require('./brand-icon');
 
 module.exports = {
     // Account config
@@ -56,6 +57,9 @@ module.exports = {
     setCardSettings: globalConfig.setCardSettings,
     getBrand: globalConfig.getBrand,
     setBrand: globalConfig.setBrand,
+    findBrandIconFile: brandIcon.findIconFile,
+    saveBrandIcon: brandIcon.saveBrandIcon,
+    clearBrandIcon: brandIcon.clearBrandIcon,
     getCaptureConfig: globalConfig.getCaptureConfig,
     setCaptureConfig: globalConfig.setCaptureConfig,
 

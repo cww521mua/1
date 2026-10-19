@@ -115,12 +115,14 @@ export interface CardSettings {
 }
 
 export interface BrandConfig {
-  /** 登录页图标图片地址；留空使用默认图标 */
+  /** 品牌图标；上传后为服务路径 /api/branding/icon?v=...，留空使用默认图标 */
   icon: string;
   /** 登录页顶部小字；留空隐藏 */
   kicker: string;
-  /** 登录页主标题 */
+  /** 登录页/侧边栏主标题 */
   title: string;
+  /** 浏览器标签页标题；留空使用主标题 */
+  pageTitle: string;
   /** 注册页卡密下方购买链接文字；与 purchaseUrl 同时非空才显示 */
   purchaseText: string;
   /** 购买链接地址 */

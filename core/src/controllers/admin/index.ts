@@ -125,7 +125,8 @@ function startAdminServer(dataProvider: any): void {
 
     const app = express();
     app.set('trust proxy', true);
-    app.use(express.json());
+    // 上限放宽到 4MB：品牌图标以 base64 JSON 上传（原图 ≤2MB）
+    app.use(express.json({ limit: '4mb' }));
 
     ctx.app = app;
 

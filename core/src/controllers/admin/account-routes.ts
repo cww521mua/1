@@ -553,6 +553,30 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
+    // API: 上传品牌图标（管理员专属，JSON body: { data: dataURL }）
+    app.post('/api/settings/branding/icon', (req: Request, res: Response) => {
+        if (!requireAdminRole(ctx, req, res)) return;
+        try {
+            const iconPath = store.saveBrandIcon((req.body || {}).data);
+            const saved = store.setBrand({ icon: iconPath });
+            res.json({ ok: true, data: saved });
+        } catch (e: any) {
+            handleApiError(res, e);
+        }
+    });
+
+    // API: 恢复默认品牌图标（管理员专属）
+    app.post('/api/settings/branding/icon/reset', (req: Request, res: Response) => {
+        if (!requireAdminRole(ctx, req, res)) return;
+        try {
+            store.clearBrandIcon();
+            const saved = store.setBrand({ icon: '' });
+            res.json({ ok: true, data: saved });
+        } catch (e: any) {
+            handleApiError(res, e);
+        }
+    });
+
     app.post('/api/settings/system-config', (req: Request, res: Response) => {
         if (!requireAdminRole(ctx, req, res)) return;
         try {

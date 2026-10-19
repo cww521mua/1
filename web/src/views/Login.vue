@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import api, { getApiErrorMessage } from '@/api'
+import { getApiErrorMessage } from '@/api'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import BrandMark from '@/components/ui/BrandMark.vue'
+import { useBrandStore } from '@/stores/brand'
 import { useUserStore } from '@/stores/user'
 
-interface BrandInfo { icon: string, kicker: string, title: string, purchaseText: string, purchaseUrl: string }
-
 const userStore = useUserStore()
+const brandStore = useBrandStore()
+const brand = computed(() => brandStore.brand)
 const route = useRoute()
-const brand = ref<BrandInfo>({ icon: '', kicker: 'QQ FARM', title: 'QQ农场智能助手', purchaseText: '', purchaseUrl: '' })
 const mode = ref<'login' | 'register'>('login')
 const registerVia = ref<'card' | 'referral'>('card')
 const refInfo = ref<{ username: string, isAgent: boolean } | null>(null)
@@ -258,20 +258,9 @@ async function handleSubmit() {
   }
 }
 
-async function fetchBranding() {
-  try {
-    const res = await api.get('/api/branding')
-    if (res.data?.ok && res.data.data)
-      brand.value = { ...brand.value, ...res.data.data }
-  }
-  catch (e) {
-    console.error('获取品牌配置失败:', e)
-  }
-}
-
 onMounted(() => {
   void applyReferralFromQuery()
-  void fetchBranding()
+  void brandStore.load()
 })
 </script>
 

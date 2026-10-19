@@ -12,6 +12,7 @@ import BrandMark from '@/components/ui/BrandMark.vue'
 import { menuRoutes } from '@/router/menu'
 import { getPlatformClass, getPlatformLabel, useAccountStore } from '@/stores/account'
 import { useAppStore } from '@/stores/app'
+import { useBrandStore } from '@/stores/brand'
 import { useStatusStore } from '@/stores/status'
 import { useUserStore } from '@/stores/user'
 
@@ -19,6 +20,8 @@ const accountStore = useAccountStore()
 const statusStore = useStatusStore()
 const appStore = useAppStore()
 const userStore = useUserStore()
+const brandStore = useBrandStore()
+const brand = computed(() => brandStore.brand)
 const route = useRoute()
 const router = useRouter()
 const isDesktop = useMediaQuery('(min-width: 1024px)')
@@ -308,13 +311,20 @@ async function handleLogout() {
       <NTooltip :disabled="!isSidebarCollapsed" placement="right" :show-arrow="false" :theme-overrides="sidebarTooltipTheme">
         <template #trigger>
           <div class="sidebar-brand__identity min-w-0 flex items-center gap-2.5">
-            <BrandMark class="brand-mark" :size="28" />
+            <img
+              v-if="brand.icon"
+              :key="brand.icon"
+              :src="brand.icon"
+              alt="logo"
+              class="brand-icon"
+            >
+            <BrandMark v-else class="brand-mark" :size="28" />
             <span v-show="!isSidebarCollapsed" class="min-w-0 truncate text-sm font-semibold font-display">
-              QQ农场智能助手
+              {{ brand.title }}
             </span>
           </div>
         </template>
-        QQ农场智能助手
+        {{ brand.title }}
       </NTooltip>
       <!-- Mobile Close Button -->
       <NButton
@@ -689,6 +699,15 @@ async function handleLogout() {
 .brand-mark {
   flex: none;
   filter: drop-shadow(0 2px 6px rgba(45, 122, 83, 0.22));
+}
+
+.brand-icon {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 2px 6px rgba(45, 122, 83, 0.18);
 }
 
 .sidebar-control {

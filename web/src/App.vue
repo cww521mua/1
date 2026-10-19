@@ -11,10 +11,14 @@ import { computed } from 'vue'
 import { RouterView } from 'vue-router'
 import ToastContainer from '@/components/ToastContainer.vue'
 import { useAppStore } from '@/stores/app'
+import { useBrandStore } from '@/stores/brand'
 import { createNaiveThemeOverrides } from '@/ui/naive-theme'
 
 const { isDark } = storeToRefs(useAppStore())
 const themeOverrides = computed(() => createNaiveThemeOverrides(isDark.value))
+
+// 品牌配置为公开接口，登录页与面板共用；同时驱动浏览器标签页标题
+useBrandStore().load()
 </script>
 
 <template>

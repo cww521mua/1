@@ -19,6 +19,7 @@ import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
 import BaseSwitch from '@/components/ui/BaseSwitch.vue'
 import { getPlatformClass, getPlatformLabel, useAccountStore } from '@/stores/account'
+import { useBrandStore } from '@/stores/brand'
 import { useSettingStore } from '@/stores/setting'
 import { useStatusStore } from '@/stores/status'
 import { useUserStore } from '@/stores/user'
@@ -35,6 +36,7 @@ const router = useRouter()
 const route = useRoute()
 const accountStore = useAccountStore()
 const userStore = useUserStore()
+const brandStore = useBrandStore()
 const settingStore = useSettingStore()
 const statusStore = useStatusStore()
 
@@ -1353,6 +1355,7 @@ const localBrand = ref({
   icon: '',
   kicker: '',
   title: '',
+  pageTitle: '',
   purchaseText: '',
   purchaseUrl: '',
 })
@@ -1468,6 +1471,7 @@ function normalizeBrand(source: any) {
     icon: typeof source?.icon === 'string' ? source.icon.trim() : '',
     kicker: typeof source?.kicker === 'string' ? source.kicker.trim() : '',
     title: typeof source?.title === 'string' && source.title.trim() ? source.title.trim() : 'QQ农场智能助手',
+    pageTitle: typeof source?.pageTitle === 'string' ? source.pageTitle.trim() : '',
     purchaseText: typeof source?.purchaseText === 'string' ? source.purchaseText.trim() : '',
     purchaseUrl: typeof source?.purchaseUrl === 'string' ? source.purchaseUrl.trim() : '',
   }
@@ -1475,9 +1479,8 @@ function normalizeBrand(source: any) {
 
 async function loadBranding() {
   try {
-    const { data } = await api.get('/api/branding')
-    if (data?.ok)
-      localBrand.value = normalizeBrand(data.data)
+    await brandStore.load(true)
+    localBrand.value = normalizeBrand(brandStore.brand)
   }
   catch (e) {
     console.error('加载品牌配置失败:', e)
@@ -1492,8 +1495,10 @@ async function handleSaveBranding() {
   brandSaving.value = true
   try {
     const { data } = await api.post('/api/settings/branding', localBrand.value)
-    if (data?.ok)
+    if (data?.ok) {
+      brandStore.apply(data.data)
       localBrand.value = normalizeBrand(data.data)
+    }
     showAlert(data?.ok ? '品牌设置已保存' : getApiErrorMessage(data, '保存失败'), data?.ok ? 'primary' : 'danger')
   }
   catch (e: any) {
@@ -1501,6 +1506,70 @@ async function handleSaveBranding() {
   }
   finally {
     brandSaving.value = false
+  }
+}
+
+const iconFileInput = ref<HTMLInputElement | null>(null)
+const iconUploading = ref(false)
+
+function triggerIconUpload() {
+  iconFileInput.value?.click()
+}
+
+async function handleIconFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file)
+    return
+  if (file.size > 2 * 1024 * 1024) {
+    showAlert('图标图片不能超过 2MB', 'danger')
+    return
+  }
+  iconUploading.value = true
+  try {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result || ''))
+      reader.onerror = () => reject(new Error('读取图片失败'))
+      reader.readAsDataURL(file)
+    })
+    const { data } = await api.post('/api/settings/branding/icon', { data: dataUrl })
+    if (data?.ok) {
+      brandStore.apply(data.data)
+      localBrand.value = normalizeBrand(data.data)
+      showAlert('图标已更新', 'primary')
+    }
+    else {
+      showAlert(getApiErrorMessage(data, '上传失败'), 'danger')
+    }
+  }
+  catch (e: any) {
+    showAlert(`上传失败: ${getApiErrorMessage(e, '未知错误')}`, 'danger')
+  }
+  finally {
+    iconUploading.value = false
+  }
+}
+
+async function handleResetIcon() {
+  iconUploading.value = true
+  try {
+    const { data } = await api.post('/api/settings/branding/icon/reset')
+    if (data?.ok) {
+      brandStore.apply(data.data)
+      localBrand.value = normalizeBrand(data.data)
+      showAlert('已恢复默认图标', 'primary')
+    }
+    else {
+      showAlert(getApiErrorMessage(data, '操作失败'), 'danger')
+    }
+  }
+  catch (e: any) {
+    showAlert(`操作失败: ${getApiErrorMessage(e, '未知错误')}`, 'danger')
+  }
+  finally {
+    iconUploading.value = false
   }
 }
 
@@ -2254,16 +2323,16 @@ async function handleResetSystemConfig() {
                     placeholder="QQ农场智能助手"
                   />
                   <BaseInput
+                    v-model="localBrand.pageTitle"
+                    label="网页标题（浏览器标签页）"
+                    type="text"
+                    placeholder="留空使用主标题"
+                  />
+                  <BaseInput
                     v-model="localBrand.kicker"
                     label="顶部小字"
                     type="text"
                     placeholder="留空则隐藏，如 QQ FARM"
-                  />
-                  <BaseInput
-                    v-model="localBrand.icon"
-                    label="图标地址（URL）"
-                    type="text"
-                    placeholder="留空使用默认图标"
                   />
                   <BaseInput
                     v-model="localBrand.purchaseText"
@@ -2277,6 +2346,53 @@ async function handleResetSystemConfig() {
                     type="text"
                     placeholder="https://..."
                   />
+                </div>
+
+                <div class="border border-gray-200 rounded-lg bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30">
+                  <div class="flex flex-wrap items-center gap-3">
+                    <img
+                      v-if="localBrand.icon"
+                      :key="localBrand.icon"
+                      :src="localBrand.icon"
+                      alt="品牌图标预览"
+                      class="h-12 w-12 rounded-xl object-cover"
+                    >
+                    <div
+                      v-else
+                      class="h-12 w-12 flex items-center justify-center rounded-xl bg-white text-2xl text-gray-400 dark:bg-gray-800"
+                    >
+                      <span class="i-carbon-image" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <p class="text-sm text-gray-700 font-medium dark:text-gray-300">
+                        品牌图标
+                      </p>
+                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        支持 PNG / JPG / GIF / WebP，不超过 2MB；用于登录页和侧边栏
+                      </p>
+                    </div>
+                    <div class="flex gap-2">
+                      <input
+                        ref="iconFileInput"
+                        type="file"
+                        accept="image/png,image/jpeg,image/gif,image/webp"
+                        class="hidden"
+                        @change="handleIconFileChange"
+                      >
+                      <BaseButton variant="secondary" size="sm" :loading="iconUploading" @click="triggerIconUpload">
+                        上传图标
+                      </BaseButton>
+                      <BaseButton
+                        v-if="localBrand.icon"
+                        variant="secondary"
+                        size="sm"
+                        :loading="iconUploading"
+                        @click="handleResetIcon"
+                      >
+                        恢复默认
+                      </BaseButton>
+                    </div>
+                  </div>
                 </div>
 
                 <div class="mt-3 flex justify-end border-t pt-3 dark:border-gray-700">

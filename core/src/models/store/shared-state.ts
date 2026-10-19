@@ -61,6 +61,7 @@ const DEFAULT_BRAND: BrandConfig = {
     icon: '',
     kicker: 'QQ FARM',
     title: 'QQ农场智能助手',
+    pageTitle: 'QQ农场智能助手',
     purchaseText: '',
     purchaseUrl: '',
 };

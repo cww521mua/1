@@ -27,6 +27,8 @@ function normalizeBrand(input: unknown): BrandConfig {
         icon: String(src.icon ?? DEFAULT_BRAND.icon).trim(),
         kicker: String(src.kicker ?? DEFAULT_BRAND.kicker).trim(),
         title,
+        // 网页标题留空时回退为主标题
+        pageTitle: String(src.pageTitle ?? '').trim() || title,
         purchaseText: String(src.purchaseText ?? DEFAULT_BRAND.purchaseText).trim(),
         purchaseUrl: String(src.purchaseUrl ?? DEFAULT_BRAND.purchaseUrl).trim(),
     };
