@@ -16,6 +16,9 @@ interface ManagedUser {
   card: { code: string, description: string, expiresAt: number | null, isPermanent: boolean }
   accountLimit: number
   gameAccountCount: number
+  referredBy?: string
+  validPurchase?: boolean
+  isAgent?: boolean
   createdAt: number
   expired: boolean
 }
@@ -67,6 +70,7 @@ const editForm = ref({
   expiresAt: '',
   accountLimit: 2,
   enabled: true,
+  isAgent: false,
   newPassword: '',
 })
 
@@ -77,6 +81,7 @@ function openEditModal(user: ManagedUser) {
     expiresAt: toDatetimeLocal(user.card.expiresAt),
     accountLimit: user.accountLimit,
     enabled: user.enabled,
+    isAgent: user.isAgent === true,
     newPassword: '',
   }
   showEditModal.value = true
@@ -95,6 +100,7 @@ async function confirmEdit() {
       expiresAt: editForm.value.isPermanent ? null : editForm.value.expiresAt.trim(),
       accountLimit: Number(editForm.value.accountLimit) || 2,
       enabled: editForm.value.enabled,
+      isAgent: editForm.value.isAgent,
     }
     if (editForm.value.newPassword.trim())
       payload.newPassword = editForm.value.newPassword.trim()
@@ -234,6 +240,12 @@ onMounted(fetchUsers)
               >
                 已停用
               </span>
+              <span
+                v-if="user.isAgent"
+                class="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium leading-tight text-amber-600 dark:bg-amber-900/25 dark:text-amber-400"
+              >
+                代理 · 7 折
+              </span>
             </div>
             <p class="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
               到期：{{ formatExpiry(user.card) }} · 账号 {{ user.gameAccountCount }}/{{ user.accountLimit }}
@@ -298,6 +310,9 @@ onMounted(fetchUsers)
           />
           <div class="border border-gray-200 rounded-lg bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30">
             <BaseSwitch v-model="editForm.enabled" label="启用登录" />
+          </div>
+          <div class="border border-gray-200 rounded-lg bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30">
+            <BaseSwitch v-model="editForm.isAgent" label="代理身份（7 折拿卡）" />
           </div>
           <BaseInput
             v-model="editForm.newPassword"

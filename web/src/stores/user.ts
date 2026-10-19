@@ -87,6 +87,28 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  async function registerReferral(username: string, password: string, refCode: string) {
+    try {
+      const res = await api.post('/api/register/referral', { username, password, refCode }, { skipErrorToast: true } as any)
+      return res.data
+    }
+    catch (error: any) {
+      return { ok: false, error: getApiErrorMessage(error, '注册失败') }
+    }
+  }
+
+  async function fetchReferralInfo(code: string) {
+    try {
+      const res = await api.get('/api/register/referral-info', { params: { code } , skipErrorToast: true } as any)
+      if (res.data?.ok)
+        return res.data.data as { username: string, isAgent: boolean }
+      return null
+    }
+    catch {
+      return null
+    }
+  }
+
   async function renew(cardCode: string) {
     try {
       const res = await api.post('/api/user/renew', { cardCode }, { skipErrorToast: true } as any)
@@ -139,6 +161,8 @@ export const useUserStore = defineStore('user', () => {
     cardExpiry,
     login,
     register,
+    registerReferral,
+    fetchReferralInfo,
     renew,
     logout,
     fetchUserInfo,

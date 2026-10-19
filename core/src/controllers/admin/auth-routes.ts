@@ -22,7 +22,7 @@ const {
 const adminLogger = createModuleLogger('admin');
 
 // 公开接口（无需登录）
-const PUBLIC_API_PATHS = new Set(['/login', '/register', '/game-version']);
+const PUBLIC_API_PATHS = new Set(['/login', '/register', '/register/referral', '/register/referral-info', '/game-version']);
 
 function issueIdentityToken(ctx: AdminContext, username: string, role: 'admin' | 'user'): string {
     const token = issueToken();
@@ -109,6 +109,31 @@ function mountAuthRoutes(app: Application, ctx: AdminContext): void {
         }
         adminLogger.info('卡密注册成功', { username: result.user.username, ip: clientIp });
         return res.json({ ok: true, data: { username: result.user.username } });
+    });
+
+    // 推广注册（公开接口）：免卡密，赠送体验时长，每个 IP 仅一次
+    app.post('/api/register/referral', (req: Request, res: Response) => {
+        const { username, password, refCode } = req.body || {};
+        if (!username || !password || !refCode) {
+            return res.status(400).json({ ok: false, error: '请填写用户名、密码和推广码' });
+        }
+        const clientIp = getClientIp(req);
+        const result = userStore.registerUserByReferral(String(username), String(password), String(refCode), clientIp);
+        if (!result.ok) {
+            adminLogger.warn('推广注册失败', { username: String(username), error: result.error, ip: clientIp });
+            return res.status(400).json({ ok: false, error: result.error });
+        }
+        adminLogger.info('推广注册成功', { username: result.user.username, referrer: result.user.referredBy, ip: clientIp });
+        return res.json({ ok: true, data: { username: result.user.username } });
+    });
+
+    // 推广码归属查询（公开接口）：注册页展示邀请人
+    app.get('/api/register/referral-info', (req: Request, res: Response) => {
+        const referrer = userStore.findByReferralCode(req.query.code);
+        if (!referrer) {
+            return res.status(404).json({ ok: false, error: '推广码无效' });
+        }
+        return res.json({ ok: true, data: { username: referrer.username, isAgent: referrer.isAgent === true } });
     });
 
     app.use('/api', (req: Request, res: Response, next: any) => {
@@ -200,6 +225,17 @@ function mountAuthRoutes(app: Application, ctx: AdminContext): void {
             ctx.tokenMeta?.clear();
         }
         return res.json(result);
+    });
+
+    // 推广概览：推广码、被推广人列表、有效推广数与代理状态
+    app.get('/api/user/referral', (req: Request, res: Response) => {
+        const identity = getIdentity(ctx, req);
+        if (!isAdminIdentity(identity)) {
+            const overview = userStore.getReferralOverview(identity.username);
+            if (!overview) return res.status(404).json({ ok: false, error: '用户不存在' });
+            return res.json({ ok: true, data: overview });
+        }
+        return res.status(400).json({ ok: false, error: '推广功能面向普通用户' });
     });
 
     // 普通用户使用卡密续费（时间卡续期 / 额度卡提升账号上限）

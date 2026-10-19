@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import api, { getApiErrorMessage } from '@/api'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
@@ -9,9 +10,12 @@ import { useUserStore } from '@/stores/user'
 declare const __APP_VERSION__: string
 
 const userStore = useUserStore()
+const route = useRoute()
 const appVersion = __APP_VERSION__
 const gameVersion = ref('')
 const mode = ref<'login' | 'register'>('login')
+const registerVia = ref<'card' | 'referral'>('card')
+const refInfo = ref<{ username: string, isAgent: boolean } | null>(null)
 const username = ref('')
 const password = ref('')
 const confirmPassword = ref('')
@@ -85,7 +89,7 @@ function validateForm(): boolean {
       error.value = confirmPasswordValid.value.message || '请再次输入密码'
       return false
     }
-    if (!cardCode.value.trim()) {
+    if (registerVia.value === 'card' && !cardCode.value.trim()) {
       error.value = '请输入卡密'
       return false
     }
@@ -99,8 +103,30 @@ function switchMode(next: 'login' | 'register') {
   success.value = ''
   password.value = ''
   confirmPassword.value = ''
-  cardCode.value = ''
+  if (next === 'register' && !route.query.ref)
+    registerVia.value = 'card'
 }
+
+async function applyReferralFromQuery() {
+  const code = String(route.query.ref || '').trim()
+  if (!code) {
+    registerVia.value = 'card'
+    refInfo.value = null
+    return
+  }
+  mode.value = 'register'
+  registerVia.value = 'referral'
+  refInfo.value = await userStore.fetchReferralInfo(code.toUpperCase())
+  if (!refInfo.value) {
+    error.value = '推广链接无效，请使用卡密注册'
+    registerVia.value = 'card'
+  }
+}
+
+watch(() => route.query.ref, () => {
+  if (route.query.ref !== undefined)
+    void applyReferralFromQuery()
+})
 
 async function handleSubmit() {
   if (!validateForm())
@@ -111,6 +137,23 @@ async function handleSubmit() {
   success.value = ''
 
   try {
+    if (mode.value === 'register' && registerVia.value === 'referral') {
+      const result = await userStore.registerReferral(username.value.trim(), password.value, String(route.query.ref || '').trim().toUpperCase())
+      if (result.ok) {
+        success.value = '注册成功，体验时长已到账，请登录'
+        password.value = ''
+        confirmPassword.value = ''
+        setTimeout(() => {
+          mode.value = 'login'
+          success.value = ''
+        }, 1200)
+      }
+      else {
+        error.value = result.error || '注册失败'
+      }
+      return
+    }
+
     if (mode.value === 'register') {
       const result = await userStore.register(username.value.trim(), password.value, cardCode.value.trim().toUpperCase())
       if (result.ok) {
@@ -183,7 +226,10 @@ async function fetchGameVersion() {
   }
 }
 
-onMounted(fetchGameVersion)
+onMounted(() => {
+  void applyReferralFromQuery()
+  fetchGameVersion()
+})
 </script>
 
 <template>
@@ -197,7 +243,9 @@ onMounted(fetchGameVersion)
             QQ农场智能助手
           </h1>
           <p class="logo-subtitle">
-            {{ mode === 'login' ? '超级管理员 / 用户登录' : '使用时间卡密注册账号' }}
+            {{ mode === 'login'
+              ? '超级管理员 / 用户登录'
+              : (registerVia === 'referral' ? '推广注册 · 1 小时免费体验' : '使用时间卡密注册账号') }}
           </p>
         </div>
       </header>
@@ -219,6 +267,19 @@ onMounted(fetchGameVersion)
           <p v-if="username && !usernameValid.valid" class="form-hint error">
             {{ usernameValid.message }}
           </p>
+        </div>
+
+        <div
+          v-if="mode === 'register' && registerVia === 'referral'"
+          class="message success-message"
+          role="status"
+        >
+          <span class="i-carbon-user-follow" />
+          <div>
+            邀请人：<strong>{{ refInfo?.username || '-' }}</strong>
+            <template v-if="refInfo?.isAgent">（代理）</template>
+            <br>注册即赠送 1 小时体验，使用 30 天及以上卡密续费后邀请人获得奖励
+          </div>
         </div>
 
         <div class="form-group">
@@ -258,7 +319,7 @@ onMounted(fetchGameVersion)
             </p>
           </div>
 
-          <div class="form-group">
+          <div v-if="registerVia === 'card'" class="form-group">
             <label class="form-label" for="card-code">
               <span class="i-carbon-ticket" />
               卡密

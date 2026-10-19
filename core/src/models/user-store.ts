@@ -15,9 +15,18 @@ const security = require('./auth-security');
 const cardStore = require('./card-store');
 
 const USERS_FILE: string = getDataFile('users.json');
+const REFERRAL_IPS_FILE: string = getDataFile('referral-ips.json');
 
 const DAY_MS: number = 24 * 60 * 60 * 1000;
+const HOUR_MS: number = 60 * 60 * 1000;
 const DEFAULT_USER_ACCOUNT_LIMIT: number = 2;
+
+// 推广体系：体验时长、代理门槛、推荐奖励
+const REFERRAL_TRIAL_MS: number = HOUR_MS;
+const REFERRAL_AGENT_TARGET: number = 10;
+const REFERRAL_QUALIFY_CARD_MS: number = 30 * DAY_MS;
+const REFERRAL_REWARD_MS: number = 2 * DAY_MS;
+const REFERRAL_CODE_LENGTH: number = 8;
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION = 15 * 60 * 1000;
@@ -36,6 +45,14 @@ interface UserRecord {
     enabled: boolean;
     card: UserCard;
     accountLimit: number;
+    /** 推广码（懒生成，全局唯一） */
+    referralCode?: string;
+    /** 注册时所用的推广码归属人 */
+    referredBy?: string;
+    /** 首次有效购买（核销 ≥30 天时间卡）时间 */
+    validPurchaseAt?: number | null;
+    /** 代理身份：有效推广满 REFERRAL_AGENT_TARGET 人自动获得，或管理员手动授予 */
+    isAgent?: boolean;
     createdAt: number;
     updatedAt: number;
 }
@@ -62,7 +79,7 @@ function normalizeUser(raw: any): UserRecord | null {
     const source = raw && typeof raw === 'object' ? raw : {};
     const username = String(source.username || '').trim();
     if (!username || !String(source.password || '').trim()) return null;
-    return {
+    const user: UserRecord = {
         username,
         password: String(source.password),
         role: 'user',
@@ -72,6 +89,15 @@ function normalizeUser(raw: any): UserRecord | null {
         createdAt: Number(source.createdAt) || Date.now(),
         updatedAt: Number(source.updatedAt) || Date.now(),
     };
+    const referralCode = String(source.referralCode || '').trim();
+    if (referralCode) user.referralCode = referralCode;
+    const referredBy = String(source.referredBy || '').trim();
+    if (referredBy) user.referredBy = referredBy;
+    if (source.validPurchaseAt !== undefined && source.validPurchaseAt !== null && Number(source.validPurchaseAt) > 0) {
+        user.validPurchaseAt = Number(source.validPurchaseAt);
+    }
+    if (source.isAgent === true) user.isAgent = true;
+    return user;
 }
 
 function normalizeUsersData(raw: unknown): UsersData {
@@ -209,6 +235,9 @@ function toPublicUser(user: UserRecord) {
         card: { ...user.card },
         accountLimit: user.accountLimit,
         gameAccountCount: getOwnedAccountCount(user.username),
+        referredBy: user.referredBy || '',
+        validPurchase: !!user.validPurchaseAt,
+        isAgent: user.isAgent === true,
         createdAt: user.createdAt,
         expired: isUserExpired(user),
     };
@@ -267,10 +296,12 @@ function renewUser(username: unknown, cardCode: unknown): any {
     if (invalid || !card) return { ok: false, error: invalid || '卡密不存在' };
 
     const now = Date.now();
+    let qualifyingDurationMs = 0;
     if (card.type === 'quota') {
         user.accountLimit = user.accountLimit + cardStore.getQuotaValue(card);
     } else {
         const duration = cardStore.normalizeTimeDuration(card);
+        qualifyingDurationMs = duration.isPermanent ? Number.MAX_SAFE_INTEGER : Number(duration.durationMs || 0);
         const expiresAt = cardStore.computeNextExpiresAt(user.card.expiresAt, duration, now);
         user.card = {
             code: card.code,
@@ -280,10 +311,170 @@ function renewUser(username: unknown, cardCode: unknown): any {
         };
     }
     user.updatedAt = now;
+
+    // 推广奖励：被推广人核销 ≥30 天（或永久）时间卡 → 推广人账号 +2 天
+    let referrerRewarded = false;
+    if (card.type === 'time' && qualifyingDurationMs >= REFERRAL_QUALIFY_CARD_MS && user.referredBy) {
+        const result = rewardReferrer(data, user, now);
+        referrerRewarded = result;
+    }
+
     saveUsers(data);
     cardStore.markCardUsed(card, name, name, now);
 
-    return { ok: true, user: toPublicUser(user), cardType: card.type };
+    return { ok: true, user: toPublicUser(user), cardType: card.type, referrerRewarded };
+}
+
+// ==================== 推广体系 ====================
+
+function generateReferralCode(users: UserRecord[]): string {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    for (let attempt = 0; attempt < 50; attempt++) {
+        let code = '';
+        for (let i = 0; i < REFERRAL_CODE_LENGTH; i++) {
+            code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        if (!users.some(user => user.referralCode === code)) return code;
+    }
+    throw new Error('推广码生成失败，请重试');
+}
+
+function ensureReferralCode(user: UserRecord, users: UserRecord[]): string {
+    if (user.referralCode) return user.referralCode;
+    user.referralCode = generateReferralCode(users);
+    user.updatedAt = Date.now();
+    saveUsers({ users });
+    return user.referralCode;
+}
+
+function findByReferralCode(code: unknown): UserRecord | null {
+    const normalized = String(code || '').trim().toUpperCase();
+    if (!normalized) return null;
+    return loadUsers().users.find(user => user.referralCode === normalized) || null;
+}
+
+interface ReferralIpRecord {
+    username: string;
+    at: number;
+}
+
+function loadReferralIps(): Record<string, ReferralIpRecord> {
+    const raw = readJsonFile(REFERRAL_IPS_FILE, () => ({}));
+    return raw && typeof raw === 'object' ? raw as Record<string, ReferralIpRecord> : {};
+}
+
+function saveReferralIps(ips: Record<string, ReferralIpRecord>): void {
+    ensureDataDir();
+    writeJsonFileAtomic(REFERRAL_IPS_FILE, ips);
+}
+
+/**
+ * 使用推广码注册：免卡密，赠送体验时长；每个 IP 仅允许注册一个推广账号。
+ */
+function registerUserByReferral(username: unknown, password: unknown, refCode: unknown, ip: string = 'unknown'): any {
+    const name = String(username || '').trim();
+    const data = loadUsers();
+
+    const usernameError = validateNewUsername(name, data.users);
+    if (usernameError) return { ok: false, error: usernameError };
+
+    const strength = security.validatePasswordStrength(String(password || ''));
+    if (!strength.valid) return { ok: false, error: strength.errors.join('；') };
+
+    const referrer = findByReferralCode(refCode);
+    if (!referrer) return { ok: false, error: '推广码无效' };
+
+    const ips = loadReferralIps();
+    const ipKey = String(ip || 'unknown').trim();
+    if (ips[ipKey]) {
+        return { ok: false, error: '该网络已使用推广链接注册过账号' };
+    }
+
+    const now = Date.now();
+    const expiresAt = now + REFERRAL_TRIAL_MS;
+    const user: UserRecord = {
+        username: name,
+        password: security.hashPassword(String(password)),
+        role: 'user',
+        enabled: true,
+        card: {
+            code: 'REFERRAL',
+            description: `推广注册体验（邀请人 ${referrer.username}）`,
+            expiresAt,
+            isPermanent: false,
+        },
+        accountLimit: DEFAULT_USER_ACCOUNT_LIMIT,
+        referredBy: referrer.username,
+        createdAt: now,
+        updatedAt: now,
+    };
+
+    data.users.push(user);
+    saveUsers(data);
+    ips[ipKey] = { username: name, at: now };
+    saveReferralIps(ips);
+    clearUserFailedAttempts(name);
+
+    return { ok: true, user: toPublicUser(user) };
+}
+
+/**
+ * 被推广人核销 ≥30 天时间卡后，给推广人账号续 2 天，并记录有效购买。
+ */
+function rewardReferrer(data: UsersData, referredUser: UserRecord, now: number): boolean {
+    const referrer = data.users.find(item => item.username === referredUser.referredBy);
+    if (!referrer) return false;
+
+    if (referrer.card.expiresAt !== null) {
+        const base = referrer.card.expiresAt > now ? referrer.card.expiresAt : now;
+        referrer.card.expiresAt = base + REFERRAL_REWARD_MS;
+        referrer.card.isPermanent = false;
+        referrer.updatedAt = now;
+    }
+
+    if (!referredUser.validPurchaseAt) {
+        referredUser.validPurchaseAt = now;
+    }
+
+    // 有效推广满目标人数自动升级代理
+    const validCount = data.users.filter(item => item.referredBy === referrer.username && item.validPurchaseAt).length;
+    if (validCount >= REFERRAL_AGENT_TARGET) {
+        referrer.isAgent = true;
+    }
+    return true;
+}
+
+/**
+ * 推广概览：推广码、绑定的被推广人列表、有效推广数与代理状态。
+ */
+function getReferralOverview(username: unknown): any {
+    const data = loadUsers();
+    const user = data.users.find(item => item.username === String(username || '').trim());
+    if (!user) return null;
+    const referralCode = ensureReferralCode(user, data.users);
+
+    const referred = data.users
+        .filter(item => item.referredBy === user.username)
+        .map(item => ({
+            username: item.username,
+            createdAt: item.createdAt,
+            validPurchase: !!item.validPurchaseAt,
+            validPurchaseAt: item.validPurchaseAt || null,
+            expired: isUserExpired(item),
+            enabled: item.enabled,
+        }))
+        .sort((a: any, b: any) => b.createdAt - a.createdAt);
+
+    const validCount = referred.filter((item: any) => item.validPurchase).length;
+    return {
+        referralCode,
+        referred,
+        validCount,
+        agentRequired: REFERRAL_AGENT_TARGET,
+        isAgent: user.isAgent === true,
+        qualifyCardDays: REFERRAL_QUALIFY_CARD_MS / DAY_MS,
+        rewardDays: REFERRAL_REWARD_MS / DAY_MS,
+    };
 }
 
 function getAllUsers(): any[] {
@@ -330,6 +521,10 @@ function editUser(username: unknown, updates: Record<string, unknown> = {}): any
     }
     if (updates.accountLimit !== undefined) {
         user.accountLimit = Math.max(1, Number.parseInt(String(updates.accountLimit), 10) || DEFAULT_USER_ACCOUNT_LIMIT);
+        user.updatedAt = now;
+    }
+    if (updates.isAgent !== undefined) {
+        user.isAgent = updates.isAgent === true;
         user.updatedAt = now;
     }
     if (updates.newPassword !== undefined && String(updates.newPassword || '').trim()) {
@@ -393,11 +588,14 @@ module.exports = {
     DEFAULT_USER_ACCOUNT_LIMIT,
     USERS_FILE,
     registerUser,
+    registerUserByReferral,
     validateUser,
     renewUser,
     getAllUsers,
     findUser,
     getUserInfo,
+    findByReferralCode,
+    getReferralOverview,
     editUser,
     changeUserPassword,
     deleteUser,

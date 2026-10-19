@@ -66,4 +66,11 @@ export const menuRoutes: MenuItem[] = [
     icon: 'i-carbon-settings',
     component: () => import('@/views/Settings.vue'),
   },
+  {
+    path: 'referral',
+    name: 'referral',
+    label: '推广',
+    icon: 'i-carbon-connect',
+    component: () => import('@/views/Referral.vue'),
+  },
 ]
