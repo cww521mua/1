@@ -11,8 +11,16 @@ export {};
 
 const crypto = require('node:crypto');
 const store = require('../../models/store');
+const cardStore = require('../../models/card-store');
+const userStore = require('../../models/user-store');
 const { findAccountByRef } = require('../../services/account-resolver');
-const { createAuthRequired, handleApiError } = require('./middleware');
+const {
+    createAuthRequired,
+    handleApiError,
+    getIdentity,
+    isAdminIdentity,
+    isAccountAccessible,
+} = require('./middleware');
 const { createModuleLogger } = require('../../services/logger');
 
 const logger = createModuleLogger('capture');
@@ -407,9 +415,19 @@ function mountCaptureRoutes(app: Application, ctx: AdminContext): void {
 
     app.use('/api/capture', createAuthRequired(ctx));
 
-    app.get('/api/capture/config', (_req: Request, res: Response) => {
+    app.get('/api/capture/config', (req: Request, res: Response) => {
+        const identity = getIdentity(ctx, req);
         const config = store.getCaptureConfig();
         const embedded = config.embedded !== false;
+        // 普通用户只需要开关状态，内部代理地址与令牌配置不下发
+        if (!isAdminIdentity(identity)) {
+            return res.json({
+                ok: true,
+                data: {
+                    enabled: config.enabled === true && embedded && isEmbeddedMode(),
+                },
+            });
+        }
         res.json({
             ok: true,
             data: {
@@ -437,6 +455,9 @@ function mountCaptureRoutes(app: Application, ctx: AdminContext): void {
                 );
                 if (!existing) {
                     return res.status(404).json({ ok: false, error: '目标账号不存在' });
+                }
+                if (!isAccountAccessible(ctx, req, accountId)) {
+                    return res.status(403).json({ ok: false, error: '无权访问此账号' });
                 }
             }
             const config = store.getCaptureConfig();
@@ -537,6 +558,43 @@ function mountCaptureRoutes(app: Application, ctx: AdminContext): void {
 
             const isUpdate = !!flow.accountId;
             const allAccounts = store.getAccounts().accounts || [];
+
+            // 普通用户只能更新自己的账号；新增受个人/实例账号上限约束
+            const identity = getIdentity(ctx, req);
+            const isUser = !isAdminIdentity(identity);
+            if (isUpdate && !isAccountAccessible(ctx, req, flow.accountId)) {
+                return res.status(403).json({ ok: false, error: '无权访问此账号' });
+            }
+            if (!isUpdate) {
+                if (isUser) {
+                    const userInfo = userStore.getUserInfo(identity.username);
+                    if (!userInfo) {
+                        return res.status(403).json({ ok: false, error: '用户不存在或已被删除' });
+                    }
+                    const ownedCount = allAccounts.filter((account: any) => String(account.owner || '') === identity.username).length;
+                    if (ownedCount >= userInfo.accountLimit) {
+                        flow.cancelled = true;
+                        captureFlows.delete(flow.id);
+                        scheduleRemoteStop(flow, 0);
+                        return res.status(403).json({
+                            ok: false,
+                            error: `账号数量已达上限（${userInfo.accountLimit}个），请使用额度卡密增加额度`,
+                        });
+                    }
+                } else {
+                    const cardSettings = store.getCardSettings();
+                    if (cardSettings.enabled && allAccounts.length >= cardSettings.accountLimit) {
+                        flow.cancelled = true;
+                        captureFlows.delete(flow.id);
+                        scheduleRemoteStop(flow, 0);
+                        return res.status(403).json({
+                            ok: false,
+                            error: `账号数量已达上限（${cardSettings.accountLimit}个），请使用卡密增加额度`,
+                        });
+                    }
+                }
+            }
+
             const duplicate = findDuplicateCapturedAccount(allAccounts, flow, flow.accountId);
             if (duplicate) {
                 flow.cancelled = true;
@@ -566,6 +624,7 @@ function mountCaptureRoutes(app: Application, ctx: AdminContext): void {
 
             store.addOrUpdateAccount({
                 ...(isUpdate ? { id: flow.accountId } : {}),
+                ...(isUser ? { owner: identity.username } : {}),
                 name: name || (existing && existing.name) || '',
                 code: flow.code,
                 platform: flow.platform,

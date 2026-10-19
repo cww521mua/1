@@ -117,9 +117,9 @@ function mountAuthRoutes(app: Application, ctx: AdminContext): void {
         return authRequired(req, res, next);
     });
 
-    // 管理与抓包接口仅限超级管理员
+    // 用户管理接口仅限超级管理员（抓包登录流程允许普通用户添加自己的账号）
     app.use('/api', (req: Request, res: Response, next: any) => {
-        if (req.path.startsWith('/admin') || req.path.startsWith('/capture')) {
+        if (req.path.startsWith('/admin')) {
             const identity = getIdentity(ctx, req);
             if (identity.role !== 'admin') {
                 return res.status(403).json({ ok: false, error: '该操作仅超级管理员可用' });

@@ -170,7 +170,9 @@ onMounted(async () => {
   }
   if (currentAccountId.value)
     await loadStrategyData(currentAccountId.value)
-  await Promise.all([loadSystemConfig(), loadDevicePresets()])
+  if (isAdmin) {
+    await Promise.all([loadSystemConfig(), loadDevicePresets()])
+  }
 })
 
 function openSettings(account: any) {
