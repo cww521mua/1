@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { menuRoutes } from '@/router/menu'
 
-// 与侧栏使用同一份名称和图标，只在底栏放最常用的五项。
-const MOBILE_ITEMS: Array<[string, string?]> = [['dashboard'], ['personal'], ['activity-center'], ['game-mall', '商城'], ['Settings']]
+// 与侧栏使用同一份名称和图标，只在底栏放最常用的六项。
+const MOBILE_ITEMS: Array<[string, string?]> = [['dashboard'], ['personal'], ['activity-center'], ['game-mall', '商城'], ['Settings'], ['referral']]
 const items = MOBILE_ITEMS.flatMap(([name, shortLabel]) => {
   const route = menuRoutes.find(item => item.name === name)
   return route ? [{ path: `/${route.path}`, label: shortLabel || route.label, icon: route.icon }] : []
@@ -32,7 +32,7 @@ const items = MOBILE_ITEMS.flatMap(([name, shortLabel]) => {
   bottom: max(12px, env(safe-area-inset-bottom));
   left: max(14px, env(safe-area-inset-left));
   display: none;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   min-height: 66px;
   padding: 7px 8px;
   border: 1px solid rgba(58, 86, 68, 0.12);
