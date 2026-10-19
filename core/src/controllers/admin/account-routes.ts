@@ -7,6 +7,8 @@ export {};
  */
 
 const store = require('../../models/store');
+const cardStore = require('../../models/card-store');
+const userStore = require('../../models/user-store');
 const { addOrUpdateAccount, deleteAccount } = store;
 const { findAccountByRef } = require('../../services/account-resolver');
 const { updateRuntimeConfig, getRuntimeConfig, getDefaultSystemConfig, getDevicePresets, getTimeZoneOptions } = require('../../config/config');
@@ -16,16 +18,26 @@ const {
     getAccountIds,
     handleApiError,
     getAccountList,
+    getIdentity,
+    isAdminIdentity,
+    isAccountAccessible,
     resolveAccId,
 } = require('./middleware');
 
+function requireAdminRole(ctx: AdminContext, req: Request, res: Response): boolean {
+    if (!isAdminIdentity(getIdentity(ctx, req))) {
+        res.status(403).json({ ok: false, error: '该操作仅超级管理员可用' });
+        return false;
+    }
+    return true;
+}
+
 function mountAccountRoutes(app: Application, ctx: AdminContext): void {
 
-    // API: 账号管理
+    // API: 账号管理（普通用户仅返回自己名下的账号）
     app.get('/api/accounts', (req: Request, res: Response) => {
         try {
-            const data = ctx.provider.getAccounts();
-            res.json({ ok: true, data });
+            res.json({ ok: true, data: { accounts: getAccountList(ctx, req) } });
         } catch (e: any) {
             handleApiError(res, e);
         }
@@ -36,7 +48,7 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         try {
             const body = (req.body && typeof req.body === 'object') ? req.body : {};
             const rawRef = body.id || body.accountId || body.uin || req.headers['x-account-id'];
-            const accountList = getAccountList(ctx);
+            const accountList = getAccountList(ctx, req);
             const target = findAccountByRef(accountList, rawRef);
             if (!target || !target.id) {
                 return res.status(404).json({ ok: false, error: 'Account not found' });
@@ -69,7 +81,7 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             if (!requestedName) {
                 return res.status(400).json({ ok: false, error: '账号备注不能为空' });
             }
-            const visibleAccounts = getAccountList(ctx);
+            const visibleAccounts = getAccountList(ctx, req);
             const remarkMatchedAccount = !body.id && requestedName
                 ? visibleAccounts.find((account: any) => String(account.name || '').trim() === requestedName)
                 : null;
@@ -99,7 +111,63 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
                 }
             }
 
+            // 普通用户：账号归属固定为本人，受自己的账号上限约束
+            const identity = getIdentity(ctx, req);
+            if (identity.role === 'user') {
+                const userInfo = userStore.getUserInfo(identity.username);
+                if (!userInfo) {
+                    return res.status(403).json({ ok: false, error: '用户不存在或已被删除' });
+                }
+                if (isUpdate && !isAccountAccessible(ctx, req, resolvedUpdateId)) {
+                    return res.status(403).json({ ok: false, error: '无权访问此账号' });
+                }
+                if (!isUpdate) {
+                    (payload as any).owner = identity.username;
+                    const ownedCount = visibleAccounts.length;
+                    if (ownedCount >= userInfo.accountLimit) {
+                        return res.status(403).json({
+                            ok: false,
+                            error: `账号数量已达上限（${userInfo.accountLimit}个），请使用额度卡密增加额度`,
+                        });
+                    }
+                }
+            }
+
+            // 卡密管控：新增账号受实例账号上限约束，可附带核销时间卡（作为授权时长）或额度卡（提升上限）
+            let pendingTimeCard: any = null;
+            if (!isUpdate && identity.role !== 'user') {
+                const cardSettings = store.getCardSettings();
+                if (cardSettings.enabled) {
+                    const cardCode = String((body as any).cardCode || '').trim();
+                    if (cardCode) {
+                        const card = cardStore.getCardByCode(cardCode);
+                        const invalid = cardStore.validateCardForUse(card);
+                        if (invalid) {
+                            return res.status(400).json({ ok: false, error: invalid });
+                        }
+                        if (card.type === 'quota') {
+                            const consumed = cardStore.consumeQuotaCard(card);
+                            store.setCardSettings({ accountLimit: consumed.accountLimit });
+                        } else {
+                            pendingTimeCard = card;
+                        }
+                    } else if (getAccountList(ctx).length >= cardSettings.accountLimit) {
+                        return res.status(403).json({
+                            ok: false,
+                            error: `账号数量已达上限（${cardSettings.accountLimit}个），请使用卡密增加额度`,
+                        });
+                    }
+                }
+            }
+
             const data = addOrUpdateAccount(payload);
+            if (pendingTimeCard) {
+                const newAcc = data.accounts.at(-1);
+                if (newAcc) {
+                    const updated = cardStore.activateTimeCardForAccount(pendingTimeCard, String(newAcc.id), String(payload.name || newAcc.name || ''));
+                    if (updated) (newAcc as any).expiresAt = (updated as any).expiresAt;
+                }
+            }
             if (ctx.provider.addAccountLog) {
                 const accountId = isUpdate ? String(payload.id) : String((data.accounts.at(-1) || {}).id || '');
                 const accountName = payload.name || '';
@@ -132,6 +200,9 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
     app.delete('/api/accounts/:id', (req: Request, res: Response) => {
         try {
             const resolvedId = resolveAccId(ctx, req.params.id) || String(req.params.id || '');
+            if (!isAccountAccessible(ctx, req, resolvedId)) {
+                return res.status(403).json({ ok: false, error: '无权访问此账号' });
+            }
 
             const before = ctx.provider.getAccounts();
             const target = findAccountByRef(before.accounts || [], req.params.id);
@@ -146,9 +217,12 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
-    // API: 账号日志
+    // API: 账号日志（全局操作日志仅超级管理员可见）
     app.get('/api/account-logs', (req: Request, res: Response) => {
         try {
+            if (!isAdminIdentity(getIdentity(ctx, req))) {
+                return res.json([]);
+            }
             const limit = Number.parseInt(req.query.limit as string) || 100;
             let list: any[] = ctx.provider.getAccountLogs ? ctx.provider.getAccountLogs(limit) : [];
             if (!Array.isArray(list)) list = [];
@@ -166,7 +240,7 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         const id = queryAccountIdRaw ? (queryAccountIdRaw === 'all' ? '' : resolveAccId(ctx, queryAccountIdRaw)) : getAccId(ctx, req);
         // 如果没有指定账号ID，获取所有账号的日志
         if (!id) {
-            const accountIds = getAccountIds(ctx);
+            const accountIds = getAccountIds(ctx, req);
             const allLogs: any[] = [];
             const options = {
                 limit: Number.parseInt(req.query.limit as string) || 100,
@@ -223,11 +297,14 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
                     logs: Array.isArray(accountLogs) ? accountLogs : [],
                 });
 
-                const allLogs = ctx.provider.getLogs('', { limit: 100 });
-                ctx.io.to('account:all').emit('logs:snapshot', {
-                    accountId: 'all',
-                    logs: Array.isArray(allLogs) ? allLogs : [],
-                });
+                // 全量快照仅由管理员触发，避免普通用户把他人日志广播到 account:all
+                if (isAdminIdentity(getIdentity(ctx, req))) {
+                    const allLogs = ctx.provider.getLogs('', { limit: 100 });
+                    ctx.io.to('account:all').emit('logs:snapshot', {
+                        accountId: 'all',
+                        logs: Array.isArray(allLogs) ? allLogs : [],
+                    });
+                }
             }
 
             res.json({ ok: true, data });
@@ -273,8 +350,9 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
-    // API: 保存下线提醒配置
+    // API: 保存下线提醒配置（仅超级管理员）
     app.post('/api/settings/offline-reminder', async (req: Request, res: Response) => {
+        if (!requireAdminRole(ctx, req, res)) return;
         try {
             const body = (req.body && typeof req.body === 'object') ? req.body : {};
             const channel = String(body.channel || '').trim().toLowerCase();
@@ -293,8 +371,9 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
-    // API: 测试下线提醒推送（不落盘）
+    // API: 测试下线提醒推送（不落盘，仅超级管理员）
     app.post('/api/settings/offline-reminder/test', async (req: Request, res: Response) => {
+        if (!requireAdminRole(ctx, req, res)) return;
         try {
             const saved = store.getOfflineReminder ? store.getOfflineReminder() : {};
             const body = (req.body && typeof req.body === 'object') ? req.body : {};
@@ -379,9 +458,12 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
             const autoAcceptHarvestStealHarvest = id && (typeof store.getAutoAcceptHarvestStealHarvest === 'function') ? store.getAutoAcceptHarvestStealHarvest(id) : 8;
             const autoAcceptHarvestStealSteal = id && (typeof store.getAutoAcceptHarvestStealSteal === 'function') ? store.getAutoAcceptHarvestStealSteal(id) : 1;
             const ui = store.getUI();
-            const offlineReminder = store.getOfflineReminder
-                ? store.getOfflineReminder()
-                : { channel: 'webhook', endpoint: '', token: '', secret: '', title: '账号下线提醒', msg: '账号下线', offlineDeleteSec: 0 };
+            const identity = getIdentity(ctx, req);
+            const offlineReminder = identity.role === 'admin'
+                ? (store.getOfflineReminder
+                    ? store.getOfflineReminder()
+                    : { channel: 'webhook', endpoint: '', token: '', secret: '', title: '账号下线提醒', msg: '账号下线', offlineDeleteSec: 0 })
+                : null;
             res.json({ ok: true, data: { intervals, strategy, preferredSeed, friendQuietHours, automation, stealDelaySeconds, plantOrderRandom, plantDelaySeconds, fertilizerBuyOrganicCount, fertilizerBuyOrganicThresholdHours, fertilizerBuyNormalCount, fertilizerBuyNormalThresholdHours, fertilizerBuyCheckIntervalMinutes, bagSeedPriority, bagSeedMultiLandReservationEnabled, bagSeedLandTypes, bagSeedFallbackStrategy, autoAcceptFriendMinLevel, autoAcceptRequireOwnLevel, autoAcceptHarvestStealEnabled, autoAcceptHarvestStealHarvest, autoAcceptHarvestStealSteal, ui, offlineReminder } });
         } catch (e: any) {
             handleApiError(res, e);
@@ -409,8 +491,11 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
-    app.get('/api/settings/system-config', (_req: Request, res: Response) => {
+    app.get('/api/settings/system-config', (req: Request, res: Response) => {
         try {
+            if (!isAdminIdentity(getIdentity(ctx, req))) {
+                return res.status(403).json({ ok: false, error: '该操作仅超级管理员可用' });
+            }
             res.json({
                 ok: true,
                 data: {
@@ -440,6 +525,7 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
     });
 
     app.post('/api/settings/login-config', (req: Request, res: Response) => {
+        if (!requireAdminRole(ctx, req, res)) return;
         try {
             const body = (req.body && typeof req.body === 'object') ? req.body : {};
             const loginSettings = store.setLoginSettings
@@ -457,6 +543,7 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
     });
 
     app.post('/api/settings/system-config', (req: Request, res: Response) => {
+        if (!requireAdminRole(ctx, req, res)) return;
         try {
             const { serverUrl, clientVersion, platform, os, timeZone, deviceInfo } = req.body || {};
             const previous = getRuntimeConfig();
@@ -486,6 +573,7 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
     });
 
     app.post('/api/settings/system-config/reset', (_req: Request, res: Response) => {
+        if (!requireAdminRole(ctx, _req, res)) return;
         try {
             const previous = getRuntimeConfig();
             const saved = getDefaultSystemConfig();

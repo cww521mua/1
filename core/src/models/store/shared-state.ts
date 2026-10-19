@@ -1,4 +1,4 @@
-import type { AccountConfig, AutomationConfig, BagSeedFallbackStrategy, CaptureConfig, FertilizerLandType, GlobalConfig, IntervalConfig, LoginSettings, OfflineReminder, PlantingStrategy, QuietHoursConfig } from '../../types/config';
+import type { AccountConfig, AutomationConfig, BagSeedFallbackStrategy, CaptureConfig, CardSettings, FertilizerLandType, GlobalConfig, IntervalConfig, LoginSettings, OfflineReminder, PlantingStrategy, QuietHoursConfig } from '../../types/config';
 export {};
 
 const { DEFAULT_TIME_ZONE, normalizeTimeZone, resolveClientVersion } = require('../../config/config');
@@ -50,6 +50,11 @@ const DEFAULT_CAPTURE_CONFIG: CaptureConfig = {
     apiBase: 'http://127.0.0.1:8450',
     apiToken: '',
     autoImportQqGids: true,
+};
+
+const DEFAULT_CARD_SETTINGS: CardSettings = {
+    enabled: false,
+    accountLimit: 0,
 };
 
 const DEFAULT_ACCOUNT_CONFIG: AccountConfig = {
@@ -505,6 +510,7 @@ const globalConfig: GlobalConfig = {
     },
     loginSettings: { ...DEFAULT_LOGIN_SETTINGS },
     offlineReminder: { ...DEFAULT_OFFLINE_REMINDER },
+    cardSettings: { ...DEFAULT_CARD_SETTINGS },
     systemConfig: null,
     captureConfig: { ...DEFAULT_CAPTURE_CONFIG },
 };
@@ -543,6 +549,13 @@ function loadGlobalConfig(): void {
             // offlineReminder normalization done in global-config
             if (data.offlineReminder && typeof data.offlineReminder === 'object') {
                 globalConfig.offlineReminder = data.offlineReminder;
+            }
+
+            if (data.cardSettings && typeof data.cardSettings === 'object') {
+                globalConfig.cardSettings = {
+                    enabled: data.cardSettings.enabled === true,
+                    accountLimit: Math.max(0, Number.parseInt(data.cardSettings.accountLimit, 10) || 0),
+                };
             }
 
             if (data.loginSettings && typeof data.loginSettings === 'object') {
@@ -633,6 +646,7 @@ module.exports = {
     DEFAULT_OFFLINE_REMINDER,
     DEFAULT_LOGIN_SETTINGS,
     DEFAULT_CAPTURE_CONFIG,
+    DEFAULT_CARD_SETTINGS,
     DEFAULT_ACCOUNT_CONFIG,
     ALLOWED_AUTOMATION_KEYS,
     // Mutable shared state (by reference)

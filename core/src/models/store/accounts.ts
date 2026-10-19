@@ -48,6 +48,13 @@ function normalizeAccount(raw: any): Account {
     };
     const nick = String(source.nick || '').trim();
     if (nick) account.nick = nick;
+    const owner = String(source.owner || '').trim();
+    if (owner) account.owner = owner;
+    if (source.expiresAt === null) {
+        account.expiresAt = null;
+    } else if (source.expiresAt !== undefined && Number.isFinite(Number(source.expiresAt))) {
+        account.expiresAt = Number(source.expiresAt);
+    }
     return account;
 }
 
@@ -57,7 +64,7 @@ function addOrUpdateAccount(acc: Partial<Account> & { avatarUrl?: string }): Acc
     let touchedAccountId = '';
     const source: any = acc || {};
     const cleanAccount: any = {};
-    for (const key of ['id', 'name', 'code', 'platform', 'uin', 'qq', 'avatar', 'avatarUrl', 'nick']) {
+    for (const key of ['id', 'name', 'code', 'platform', 'uin', 'qq', 'avatar', 'avatarUrl', 'nick', 'expiresAt', 'owner']) {
         if (source[key] !== undefined) cleanAccount[key] = source[key];
     }
     acc = cleanAccount;
@@ -70,7 +77,7 @@ function addOrUpdateAccount(acc: Partial<Account> & { avatarUrl?: string }): Acc
     } else {
         const id = data.nextId++;
         touchedAccountId = String(id);
-        data.accounts.push({
+        const created: Account = {
             id: touchedAccountId,
             name: acc.name || `账号${id}`,
             code: acc.code || '',
@@ -80,7 +87,17 @@ function addOrUpdateAccount(acc: Partial<Account> & { avatarUrl?: string }): Acc
             avatar: acc.avatar || acc.avatarUrl || '',
             createdAt: Date.now(),
             updatedAt: Date.now(),
-        });
+        };
+        const owner = String(acc.owner || '').trim();
+        if (owner) created.owner = owner;
+        const nick = String((acc as any).nick || '').trim();
+        if (nick) created.nick = nick;
+        if (acc.expiresAt === null) {
+            created.expiresAt = null;
+        } else if (acc.expiresAt !== undefined && Number.isFinite(Number(acc.expiresAt))) {
+            created.expiresAt = Number(acc.expiresAt);
+        }
+        data.accounts.push(created);
     }
     saveAccounts(data);
     if (touchedAccountId) {

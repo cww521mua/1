@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import type { AdminContext } from './context';
+import type { AdminContext, TokenIdentity } from './context';
 export {};
 
 const crypto = require('node:crypto');
@@ -38,21 +38,50 @@ function createAuthRequired(ctx: AdminContext) {
     };
 }
 
-function getAccountList(ctx: AdminContext): any[] {
+function getIdentity(ctx: AdminContext, req: Request): TokenIdentity {
+    const token = String((req as AuthenticatedRequest).adminToken || '');
+    const meta = ctx.tokenMeta?.get(token);
+    if (meta) return meta;
+    return { username: 'admin', role: 'admin' };
+}
+
+function isAdminIdentity(identity: TokenIdentity): boolean {
+    return identity.role !== 'user';
+}
+
+function getAccountList(ctx: AdminContext, req?: Request): any[] {
+    let accounts: any[] = [];
     try {
         if (ctx.provider && typeof ctx.provider.getAccounts === 'function') {
             const data = ctx.provider.getAccounts();
-            if (Array.isArray(data?.accounts)) return data.accounts;
+            if (Array.isArray(data?.accounts)) accounts = data.accounts;
         }
     } catch {
         // Fall back to persistent storage.
     }
-    const data = store.getAccounts ? store.getAccounts() : { accounts: [] };
-    return Array.isArray(data.accounts) ? data.accounts : [];
+    if (!accounts.length) {
+        const data = store.getAccounts ? store.getAccounts() : { accounts: [] };
+        accounts = Array.isArray(data.accounts) ? data.accounts : [];
+    }
+    if (req) {
+        const identity = getIdentity(ctx, req);
+        if (identity.role === 'user') {
+            accounts = accounts.filter((account: any) => String(account.owner || '') === identity.username);
+        }
+    }
+    return accounts;
 }
 
-function getAccountIds(ctx: AdminContext): string[] {
-    return getAccountList(ctx).map((account: any) => String(account.id || '')).filter(Boolean);
+function isAccountAccessible(ctx: AdminContext, req: Request, accountId: unknown): boolean {
+    const identity = getIdentity(ctx, req);
+    if (identity.role !== 'user') return true;
+    const target = String(accountId || '');
+    if (!target) return false;
+    return getAccountList(ctx, req).some((account: any) => String(account.id) === target);
+}
+
+function getAccountIds(ctx: AdminContext, req?: Request): string[] {
+    return getAccountList(ctx, req).map((account: any) => String(account.id || '')).filter(Boolean);
 }
 
 const isSoftRuntimeError = (err: any): boolean => {
@@ -104,7 +133,9 @@ function resolveAccId(ctx: AdminContext, rawRef: any): string {
 }
 
 function getAccId(ctx: AdminContext, req: Request): string {
-    return resolveAccId(ctx, req.headers['x-account-id']);
+    const id = resolveAccId(ctx, req.headers['x-account-id']);
+    if (id && !isAccountAccessible(ctx, req, id)) return '';
+    return id;
 }
 
 function buildKnownFriendGidSettings(accountId: string): {
@@ -127,6 +158,9 @@ module.exports = {
     getClientIp,
     issueToken,
     createAuthRequired,
+    getIdentity,
+    isAdminIdentity,
+    isAccountAccessible,
     getAccountList,
     getAccountIds,
     isSoftRuntimeError,

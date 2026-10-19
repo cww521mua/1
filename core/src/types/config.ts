@@ -107,6 +107,13 @@ export interface OfflineReminder {
   offlineDeleteSec: number;
 }
 
+export interface CardSettings {
+  /** 是否启用卡密管控：开启后新增账号受账号上限约束，到期账号自动停用。 */
+  enabled: boolean;
+  /** 实例级游戏账号数量上限；额度卡密核销后自动累加。 */
+  accountLimit: number;
+}
+
 export interface UIConfig {
   theme: 'light' | 'dark';
 }
@@ -153,6 +160,7 @@ export interface GlobalConfig {
   ui: UIConfig;
   loginSettings: LoginSettings;
   offlineReminder: OfflineReminder;
+  cardSettings: CardSettings;
   systemConfig: SystemConfig | null;
   captureConfig: CaptureConfig;
 }

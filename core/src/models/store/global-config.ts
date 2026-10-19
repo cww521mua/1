@@ -1,4 +1,4 @@
-import type { AccountConfig, LoginSettings, OfflineReminder, SystemConfig, UIConfig } from '../../types/config';
+import type { AccountConfig, CardSettings, LoginSettings, OfflineReminder, SystemConfig, UIConfig } from '../../types/config';
 export {};
 
 const { readTextFile, writeJsonFileAtomic } = require('../../services/json-db');
@@ -12,11 +12,21 @@ const {
     DEFAULT_OFFLINE_REMINDER,
     DEFAULT_LOGIN_SETTINGS,
     DEFAULT_CAPTURE_CONFIG,
+    DEFAULT_CARD_SETTINGS,
     globalConfig,
     normalizeAccountConfig,
     cloneAccountConfig,
     DEFAULT_ACCOUNT_CONFIG,
 } = sharedState;
+
+function normalizeCardSettings(input: unknown): CardSettings {
+    const src: Record<string, any> = (input && typeof input === 'object') ? input as Record<string, any> : {};
+    const accountLimitRaw = Number.parseInt(src.accountLimit, 10);
+    return {
+        enabled: src.enabled === true,
+        accountLimit: Number.isFinite(accountLimitRaw) && accountLimitRaw > 0 ? accountLimitRaw : DEFAULT_CARD_SETTINGS.accountLimit,
+    };
+}
 
 function normalizeOfflineReminder(input: unknown): OfflineReminder {
     const src: Record<string, any> = (input && typeof input === 'object') ? input as Record<string, any> : {};
@@ -168,6 +178,24 @@ function setOfflineReminder(cfg: Partial<OfflineReminder> | undefined): OfflineR
     return getOfflineReminder();
 }
 
+function getCardSettings(): CardSettings {
+    return normalizeCardSettings(globalConfig.cardSettings);
+}
+
+function setCardSettings(cfg: Partial<CardSettings> | undefined): CardSettings {
+    const current = normalizeCardSettings(globalConfig.cardSettings);
+    const src: Record<string, any> = (cfg && typeof cfg === 'object') ? cfg as Record<string, any> : {};
+    const next: CardSettings = {
+        enabled: src.enabled !== undefined ? src.enabled === true : current.enabled,
+        accountLimit: src.accountLimit !== undefined && src.accountLimit !== null
+            ? Math.max(0, Number.parseInt(src.accountLimit, 10) || 0)
+            : current.accountLimit,
+    };
+    globalConfig.cardSettings = next;
+    saveGlobalConfig();
+    return getCardSettings();
+}
+
 function getSystemConfig(): SystemConfig | null {
     return globalConfig.systemConfig ? { ...globalConfig.systemConfig } : null;
 }
@@ -237,6 +265,8 @@ module.exports = {
     setLoginSettings,
     getOfflineReminder,
     setOfflineReminder,
+    getCardSettings,
+    setCardSettings,
     getCaptureConfig,
     setCaptureConfig,
     getSystemConfig,

@@ -10,6 +10,9 @@ import AccountModal from '@/components/AccountModal.vue'
 import ConfirmModal from '@/components/ConfirmModal.vue'
 import AutomationSettingsForm from '@/components/settings/AutomationSettingsForm.vue'
 import BagSeedPriorityItem from '@/components/settings/BagSeedPriorityItem.vue'
+import CardKeyPanel from '@/components/settings/CardKeyPanel.vue'
+import UserAccountPanel from '@/components/settings/UserAccountPanel.vue'
+import UsersPanel from '@/components/settings/UsersPanel.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
@@ -34,13 +37,18 @@ const userStore = useUserStore()
 const settingStore = useSettingStore()
 const statusStore = useStatusStore()
 
-type SettingsTab = 'account' | 'strategy' | 'automation' | 'system'
+type SettingsTab = 'account' | 'strategy' | 'automation' | 'system' | 'cards' | 'users' | 'profile'
+const isAdmin = userStore.isAdmin
+const adminTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'system', 'cards', 'users']
+const userTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'profile']
+const settingsTabKeys: SettingsTab[] = isAdmin ? adminTabKeys : userTabKeys
 const storedTab = localStorage.getItem('settings-active-tab')
-const settingsTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'system']
 const queryTab = String(route.query.tab || '')
 const initialTab = settingsTabKeys.includes(queryTab as SettingsTab)
   ? queryTab as SettingsTab
-  : storedTab === 'user' ? 'system' : (storedTab as SettingsTab) || 'account'
+  : storedTab && settingsTabKeys.includes(storedTab as SettingsTab)
+    ? storedTab as SettingsTab
+    : (storedTab === 'user' && isAdmin ? 'system' : 'account')
 const activeTab = ref<SettingsTab>(initialTab)
 
 watch(activeTab, (newTab) => {
@@ -58,12 +66,23 @@ watch(() => route.query.tab, (value) => {
     activeTab.value = nextTab as SettingsTab
 })
 
-const tabs = [
+const adminTabs = [
   { key: 'account', label: '账号管理', icon: 'i-carbon-user-profile' },
   { key: 'strategy', label: '策略设置', icon: 'i-carbon-settings-adjust' },
   { key: 'automation', label: '自动控制', icon: 'i-carbon-settings-adjust' },
   { key: 'system', label: '系统设置', icon: 'i-carbon-settings' },
+  { key: 'cards', label: '卡密', icon: 'i-carbon-ticket' },
+  { key: 'users', label: '用户', icon: 'i-carbon-user-multiple' },
 ] as const
+
+const userTabs = [
+  { key: 'account', label: '账号管理', icon: 'i-carbon-user-profile' },
+  { key: 'strategy', label: '策略设置', icon: 'i-carbon-settings-adjust' },
+  { key: 'automation', label: '自动控制', icon: 'i-carbon-settings-adjust' },
+  { key: 'profile', label: '账户中心', icon: 'i-carbon-user-avatar' },
+] as const
+
+const tabs = isAdmin ? adminTabs : userTabs
 
 function setActiveTab(value: string) {
   if (tabs.some(tab => tab.key === value))
@@ -130,6 +149,19 @@ function handleAccountAvatarError(account: any) {
 
 const stoppedAccounts = computed(() => accounts.value.filter((acc: any) => !acc.running))
 const stoppedAccountsCount = computed(() => stoppedAccounts.value.length)
+
+function getAccountExpiryBadge(acc: any): { text: string, cls: string } | null {
+  if (acc?.expiresAt === null)
+    return { text: '永久', cls: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/25 dark:text-emerald-400' }
+  const expiresAt = Number(acc?.expiresAt)
+  if (!Number.isFinite(expiresAt) || expiresAt <= 0)
+    return null
+  const remainMs = expiresAt - Date.now()
+  if (remainMs <= 0)
+    return { text: '已到期', cls: 'bg-red-50 text-red-600 dark:bg-red-900/25 dark:text-red-400' }
+  const remainDays = Math.ceil(remainMs / 86400000)
+  return { text: `剩 ${remainDays} 天`, cls: 'bg-amber-50 text-amber-600 dark:bg-amber-900/25 dark:text-amber-400' }
+}
 
 onMounted(async () => {
   await accountStore.fetchAccounts()
@@ -1557,6 +1589,13 @@ async function handleResetSystemConfig() {
                       >
                         {{ getPlatformLabel(acc.platform) }}
                       </span>
+                      <span
+                        v-if="getAccountExpiryBadge(acc)"
+                        class="rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight"
+                        :class="getAccountExpiryBadge(acc)!.cls"
+                      >
+                        {{ getAccountExpiryBadge(acc)!.text }}
+                      </span>
                       <span class="truncate text-xs text-gray-500 sm:text-sm">
                         {{ acc.uin || '未绑定' }}
                       </span>
@@ -1930,6 +1969,15 @@ async function handleResetSystemConfig() {
             @save="saveAutomationSettings"
           />
         </div>
+
+        <!-- 卡密管理 -->
+        <CardKeyPanel v-else-if="activeTab === 'cards'" />
+
+        <!-- 用户管理 -->
+        <UsersPanel v-else-if="activeTab === 'users'" />
+
+        <!-- 账户中心（普通用户） -->
+        <UserAccountPanel v-else-if="activeTab === 'profile'" />
 
         <!-- 系统设置 -->
         <div v-else-if="activeTab === 'system'" class="space-y-4">

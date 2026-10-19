@@ -13,9 +13,13 @@ const { CONFIG } = require('../../config/config');
 const { getResourcePath } = require('../../config/runtime-paths');
 const { createModuleLogger } = require('../../services/logger');
 const store = require('../../models/store');
+const cardStore = require('../../models/card-store');
+const userStore = require('../../models/user-store');
 
 const { createAdminContext } = require('./context');
 const { mountAuthRoutes } = require('./auth-routes');
+const { mountCardRoutes } = require('./card-routes');
+const { mountAdminUserRoutes } = require('./user-routes');
 const { mountAccountRoutes } = require('./account-routes');
 const { mountFarmRoutes } = require('./farm-routes');
 const { mountFriendRoutes } = require('./friend-routes');
@@ -33,6 +37,52 @@ const {
 } = require('./socket');
 
 const adminLogger = createModuleLogger('admin');
+
+const EXPIRED_ACCOUNT_SWEEP_INTERVAL_MS = 60 * 1000;
+let expiredAccountSweepTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * 卡密管控开启时，定期停用已到期的游戏账号；普通用户到期时停用其名下全部账号。
+ */
+function sweepExpiredAccounts(context: AdminContext): void {
+    try {
+        const expiredIds = new Set<string>();
+
+        const settings = store.getCardSettings();
+        if (settings?.enabled) {
+            for (const accountId of cardStore.getExpiredAccountIds()) {
+                expiredIds.add(accountId);
+            }
+        }
+
+        const expiredUsers: string[] = userStore.getExpiredUsernames();
+        if (expiredUsers.length) {
+            const data = store.getAccounts();
+            for (const account of (data?.accounts || [])) {
+                if (expiredUsers.includes(String(account.owner || ''))) {
+                    expiredIds.add(String(account.id));
+                }
+            }
+        }
+
+        if (!expiredIds.size) return;
+        for (const accountId of expiredIds) {
+            try {
+                if (typeof context.provider.isAccountRunning === 'function' && context.provider.isAccountRunning(accountId)) {
+                    context.provider.stopAccount(accountId);
+                }
+                if (context.provider.addAccountLog) {
+                    context.provider.addAccountLog('update', '账号卡密授权已到期，自动停止', accountId, '');
+                }
+                adminLogger.warn('账号授权到期自动停止', { accountId });
+            } catch (error: any) {
+                adminLogger.warn('停止到期账号失败', { accountId, error: error.message });
+            }
+        }
+    } catch (error: any) {
+        adminLogger.warn('到期账号巡检失败', { error: error.message });
+    }
+}
 
 let ctx: AdminContext | null = null;
 let embeddedCaptureCore: any = null;
@@ -109,6 +159,8 @@ function startAdminServer(dataProvider: any): void {
 
     // Mount route modules
     mountAuthRoutes(app, ctx);
+    mountCardRoutes(app, ctx);
+    mountAdminUserRoutes(app, ctx);
     mountWxLoginRoutes(app, ctx);
     mountQqLoginRoutes(app, ctx);
     mountCaptureRoutes(app, ctx);
@@ -137,6 +189,15 @@ function startAdminServer(dataProvider: any): void {
 
     // Setup Socket.IO
     setupSocketIO(ctx);
+
+    // 卡密到期巡检：启动即扫一次，之后每分钟一次
+    sweepExpiredAccounts(ctx);
+    if (!expiredAccountSweepTimer) {
+        expiredAccountSweepTimer = setInterval(() => {
+            if (ctx) sweepExpiredAccounts(ctx);
+        }, EXPIRED_ACCOUNT_SWEEP_INTERVAL_MS);
+        (expiredAccountSweepTimer as any).unref?.();
+    }
 
 }
 

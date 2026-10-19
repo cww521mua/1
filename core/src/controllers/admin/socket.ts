@@ -9,11 +9,41 @@ const SocketIOServer = Server;
 
 const {
     resolveAccId,
+    getIdentity,
 } = require('./middleware');
+const store = require('../../models/store');
+
+function getSocketIdentity(ctx: AdminContext, socket: any) {
+    try {
+        return getIdentity(ctx, { adminToken: socket.data.adminToken } as any);
+    } catch {
+        return { username: 'admin', role: 'admin' as const };
+    }
+}
+
+function getOwnedAccountIds(ctx: AdminContext, socket: any): string[] {
+    const identity = getSocketIdentity(ctx, socket);
+    if (identity.role !== 'user') return [];
+    try {
+        const data = store.getAccounts();
+        return (Array.isArray(data?.accounts) ? data.accounts : [])
+            .filter((account: any) => String(account.owner || '') === identity.username)
+            .map((account: any) => String(account.id));
+    } catch {
+        return [];
+    }
+}
 
 function applySocketSubscription(ctx: AdminContext, socket: any, accountRef: string = ''): void {
     const incoming = String(accountRef || '').trim();
-    const resolved = incoming && incoming !== 'all' ? resolveAccId(ctx, incoming) : '';
+    let resolved = incoming && incoming !== 'all' ? resolveAccId(ctx, incoming) : '';
+
+    const ownedIds = getOwnedAccountIds(ctx, socket);
+    const isUser = ownedIds.length > 0 || getSocketIdentity(ctx, socket).role === 'user';
+    if (isUser) {
+        // 普通用户只能订阅自己名下的账号
+        if (resolved && !ownedIds.includes(resolved)) resolved = '';
+    }
 
     for (const room of socket.rooms) {
         if (room.startsWith('account:')) socket.leave(room);
@@ -36,6 +66,10 @@ function applySocketSubscription(ctx: AdminContext, socket: any, accountRef: str
         if (ctx.provider && typeof ctx.provider.getLogs === 'function') {
             let currentLogs: any[] = ctx.provider.getLogs(targetId, { limit: 100 });
             if (!Array.isArray(currentLogs)) currentLogs = [];
+            if (isUser && !targetId) {
+                // 聚合日志按归属过滤
+                currentLogs = currentLogs.filter((log: any) => ownedIds.includes(String(log.accountId || '')));
+            }
 
             socket.emit('logs:snapshot', {
                 accountId: targetId || 'all',
@@ -43,7 +77,7 @@ function applySocketSubscription(ctx: AdminContext, socket: any, accountRef: str
             });
         }
         if (ctx.provider && typeof ctx.provider.getAccountLogs === 'function') {
-            let currentAccountLogs: any[] = ctx.provider.getAccountLogs(100);
+            let currentAccountLogs: any[] = isUser ? [] : ctx.provider.getAccountLogs(100);
             if (!Array.isArray(currentAccountLogs)) currentAccountLogs = [];
 
             socket.emit('account-logs:snapshot', {

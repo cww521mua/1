@@ -11,8 +11,11 @@ declare const __APP_VERSION__: string
 const userStore = useUserStore()
 const appVersion = __APP_VERSION__
 const gameVersion = ref('')
+const mode = ref<'login' | 'register'>('login')
 const username = ref('')
 const password = ref('')
+const confirmPassword = ref('')
+const cardCode = ref('')
 const error = ref('')
 const success = ref('')
 const loading = ref(false)
@@ -32,6 +35,34 @@ const usernameValid = computed(() => {
   return { valid: true, message: '' }
 })
 
+const passwordValid = computed(() => {
+  const pwd = password.value
+  if (!pwd)
+    return { valid: false, message: '' }
+  if (pwd.length < 6)
+    return { valid: false, message: '密码长度至少6位' }
+  let typeCount = 0
+  if (/[a-z]/.test(pwd))
+    typeCount++
+  if (/[A-Z]/.test(pwd))
+    typeCount++
+  if (/\d/.test(pwd))
+    typeCount++
+  if (/[^a-zA-Z0-9]/.test(pwd))
+    typeCount++
+  if (typeCount < 2)
+    return { valid: false, message: '密码需包含大小写字母、数字、特殊符号中的至少两种' }
+  return { valid: true, message: '' }
+})
+
+const confirmPasswordValid = computed(() => {
+  if (!confirmPassword.value)
+    return { valid: false, message: '' }
+  if (confirmPassword.value !== password.value)
+    return { valid: false, message: '两次输入的密码不一致' }
+  return { valid: true, message: '' }
+})
+
 function validateForm(): boolean {
   if (!username.value) {
     error.value = '请输入用户名'
@@ -45,7 +76,30 @@ function validateForm(): boolean {
     error.value = '请输入密码'
     return false
   }
+  if (mode.value === 'register') {
+    if (!passwordValid.value.valid) {
+      error.value = passwordValid.value.message
+      return false
+    }
+    if (!confirmPasswordValid.value.valid) {
+      error.value = confirmPasswordValid.value.message || '请再次输入密码'
+      return false
+    }
+    if (!cardCode.value.trim()) {
+      error.value = '请输入卡密'
+      return false
+    }
+  }
   return true
+}
+
+function switchMode(next: 'login' | 'register') {
+  mode.value = next
+  error.value = ''
+  success.value = ''
+  password.value = ''
+  confirmPassword.value = ''
+  cardCode.value = ''
 }
 
 async function handleSubmit() {
@@ -57,6 +111,24 @@ async function handleSubmit() {
   success.value = ''
 
   try {
+    if (mode.value === 'register') {
+      const result = await userStore.register(username.value.trim(), password.value, cardCode.value.trim().toUpperCase())
+      if (result.ok) {
+        success.value = '注册成功，请登录'
+        password.value = ''
+        confirmPassword.value = ''
+        cardCode.value = ''
+        setTimeout(() => {
+          mode.value = 'login'
+          success.value = ''
+        }, 1200)
+      }
+      else {
+        error.value = result.error || '注册失败'
+      }
+      return
+    }
+
     const result = await userStore.login(username.value, password.value)
     if (result.ok) {
       if (result.data?.mustChangePassword)
@@ -125,7 +197,7 @@ onMounted(fetchGameVersion)
             QQ农场智能助手
           </h1>
           <p class="logo-subtitle">
-            超级管理员登录
+            {{ mode === 'login' ? '超级管理员 / 用户登录' : '使用时间卡密注册账号' }}
           </p>
         </div>
       </header>
@@ -158,11 +230,51 @@ onMounted(fetchGameVersion)
             id="password"
             v-model="password"
             type="password"
-            placeholder="请输入密码"
-            autocomplete="current-password"
+            :placeholder="mode === 'register' ? '至少6位，含两种字符类型' : '请输入密码'"
+            :autocomplete="mode === 'register' ? 'new-password' : 'current-password'"
             required
           />
+          <p v-if="mode === 'register' && password && !passwordValid.valid" class="form-hint error">
+            {{ passwordValid.message }}
+          </p>
         </div>
+
+        <template v-if="mode === 'register'">
+          <div class="form-group">
+            <label class="form-label" for="confirm-password">
+              <span class="i-carbon-locked" />
+              确认密码
+            </label>
+            <BaseInput
+              id="confirm-password"
+              v-model="confirmPassword"
+              type="password"
+              placeholder="请再次输入密码"
+              autocomplete="new-password"
+              required
+            />
+            <p v-if="confirmPassword && !confirmPasswordValid.valid" class="form-hint error">
+              {{ confirmPasswordValid.message }}
+            </p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="card-code">
+              <span class="i-carbon-ticket" />
+              卡密
+            </label>
+            <BaseInput
+              id="card-code"
+              v-model="cardCode"
+              type="text"
+              placeholder="请输入 16 位时间卡密"
+              required
+            />
+            <p class="form-hint">
+              时间卡密决定账号有效期；注册后可在设置中使用额度卡密提升账号上限
+            </p>
+          </div>
+        </template>
 
         <div v-if="error" class="message error-message" role="alert">
           <span class="i-carbon-warning-alt" />
@@ -179,11 +291,22 @@ onMounted(fetchGameVersion)
 
         <BaseButton type="submit" variant="primary" block :loading="loading" class="submit-btn">
           <span v-if="!loading" class="inline-flex items-center gap-2">
-            <span class="i-carbon-login" />
-            登录
+            <span :class="mode === 'login' ? 'i-carbon-login' : 'i-carbon-user-follow'" />
+            {{ mode === 'login' ? '登录' : '注册' }}
           </span>
         </BaseButton>
       </form>
+
+      <div class="mode-switch">
+        <button
+          type="button"
+          class="mode-switch__link"
+          @click="switchMode(mode === 'login' ? 'register' : 'login')"
+        >
+          <span :class="mode === 'login' ? 'i-carbon-user-follow' : 'i-carbon-login'" />
+          {{ mode === 'login' ? '没有账号？使用卡密注册' : '已有账号？返回登录' }}
+        </button>
+      </div>
 
       <footer class="card-footer">
         <div class="footer-info">
@@ -342,6 +465,30 @@ onMounted(fetchGameVersion)
 
 .submit-btn {
   margin-top: 2px;
+}
+
+.mode-switch {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.mode-switch__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 8px;
+  color: var(--ui-primary);
+  font-size: 12px;
+  font-weight: 600;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mode-switch__link:hover {
+  background: var(--ui-primary-soft);
 }
 
 .card-footer {
