@@ -66,6 +66,7 @@ function mountAuthRoutes(app: Application, ctx: AdminContext): void {
 
     app.use('/api', (req: Request, res: Response, next: any) => {
         if (req.path === '/login' || req.path === '/game-version') return next();
+        if (req.path.startsWith('/public/capture-certificate/')) return next();
         return authRequired(req, res, next);
     });
 

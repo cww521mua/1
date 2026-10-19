@@ -138,6 +138,15 @@ export interface SystemConfig {
   deviceInfo: DeviceInfo;
 }
 
+export interface CaptureConfig {
+  defaultsVersion: number;
+  enabled: boolean;
+  embedded: boolean;
+  apiBase: string;
+  apiToken: string;
+  autoImportQqGids: boolean;
+}
+
 export interface GlobalConfig {
   accountConfigs: Record<string, AccountConfig>;
   defaultAccountConfig: AccountConfig;
@@ -145,4 +154,5 @@ export interface GlobalConfig {
   loginSettings: LoginSettings;
   offlineReminder: OfflineReminder;
   systemConfig: SystemConfig | null;
+  captureConfig: CaptureConfig;
 }

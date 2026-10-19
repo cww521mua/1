@@ -52,6 +52,8 @@ module.exports = {
     setLoginSettings: globalConfig.setLoginSettings,
     getOfflineReminder: globalConfig.getOfflineReminder,
     setOfflineReminder: globalConfig.setOfflineReminder,
+    getCaptureConfig: globalConfig.getCaptureConfig,
+    setCaptureConfig: globalConfig.setCaptureConfig,
 
     // Accounts
     getAccounts: accounts.getAccounts,

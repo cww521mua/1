@@ -6,6 +6,7 @@
     "dev:core": "pnpm -C core dev",
     "dev:web": "pnpm -C web dev",
     "dev": "pnpm build:web && pnpm dev:core",
+    "capture:start": "pnpm -C core capture:start",
     "lint": "pnpm lint:core && pnpm lint:web",
     "lint:core": "pnpm -C core lint",
     "lint:web": "pnpm -C web lint",

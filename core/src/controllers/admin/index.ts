@@ -12,6 +12,7 @@ const express = require('express');
 const { CONFIG } = require('../../config/config');
 const { getResourcePath } = require('../../config/runtime-paths');
 const { createModuleLogger } = require('../../services/logger');
+const store = require('../../models/store');
 
 const { createAdminContext } = require('./context');
 const { mountAuthRoutes } = require('./auth-routes');
@@ -22,6 +23,8 @@ const { mountActivityCenterRoutes } = require('./activity-center-routes');
 const { mountCommerceRoutes } = require('./commerce-routes');
 const { mountWxLoginRoutes } = require('./wx-login-routes');
 const { mountQqLoginRoutes } = require('./qq-login-routes');
+const { mountCaptureRoutes, setEmbeddedCapture } = require('./capture-routes');
+const { createCaptureCore } = require('../../capture/index');
 const {
     setupSocketIO,
     emitRealtimeStatus: _emitStatus,
@@ -32,11 +35,43 @@ const {
 const adminLogger = createModuleLogger('admin');
 
 let ctx: AdminContext | null = null;
+let embeddedCaptureCore: any = null;
+
+function startEmbeddedCaptureService(): any {
+    try {
+        const captureConfig = store.getCaptureConfig();
+        if (captureConfig.enabled !== true) {
+            adminLogger.info('capture service disabled (enabled=false)');
+            return null;
+        }
+        if (captureConfig.embedded === false) {
+            adminLogger.info('capture service not embedded (embedded=false)');
+            return null;
+        }
+        if (embeddedCaptureCore) return embeddedCaptureCore;
+        const captureLog = (level: string, message: string, extra?: any) => {
+            const fn = (adminLogger as any)[level] || adminLogger.info;
+            fn.call(adminLogger, message, extra);
+        };
+        const core = createCaptureCore({ log: captureLog });
+        embeddedCaptureCore = core;
+        setEmbeddedCapture(core);
+        core.ready.catch((error: any) => {
+            adminLogger.warn('capture service embedded init failed', { error: error.message });
+        });
+        adminLogger.info('capture service embedded, proxy port 18000');
+        return core;
+    } catch (error: any) {
+        adminLogger.warn('capture service embedded start failed', { error: error.message });
+        return null;
+    }
+}
 
 function startAdminServer(dataProvider: any): void {
     if (ctx) return;
 
     ctx = createAdminContext(dataProvider);
+    startEmbeddedCaptureService();
 
     const app = express();
     app.set('trust proxy', true);
@@ -76,6 +111,7 @@ function startAdminServer(dataProvider: any): void {
     mountAuthRoutes(app, ctx);
     mountWxLoginRoutes(app, ctx);
     mountQqLoginRoutes(app, ctx);
+    mountCaptureRoutes(app, ctx);
     mountFarmRoutes(app, ctx);
     mountFriendRoutes(app, ctx);
     mountAccountRoutes(app, ctx);

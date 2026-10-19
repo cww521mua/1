@@ -1,4 +1,4 @@
-import type { AccountConfig, AutomationConfig, BagSeedFallbackStrategy, FertilizerLandType, GlobalConfig, IntervalConfig, LoginSettings, OfflineReminder, PlantingStrategy, QuietHoursConfig } from '../../types/config';
+import type { AccountConfig, AutomationConfig, BagSeedFallbackStrategy, CaptureConfig, FertilizerLandType, GlobalConfig, IntervalConfig, LoginSettings, OfflineReminder, PlantingStrategy, QuietHoursConfig } from '../../types/config';
 export {};
 
 const { DEFAULT_TIME_ZONE, normalizeTimeZone, resolveClientVersion } = require('../../config/config');
@@ -41,6 +41,15 @@ const DEFAULT_LOGIN_SETTINGS: LoginSettings = {
     qqQrLogin: false,
     napCatEndpoint: '',
     napCatSignature: '',
+};
+
+const DEFAULT_CAPTURE_CONFIG: CaptureConfig = {
+    defaultsVersion: 1,
+    enabled: true,
+    embedded: true,
+    apiBase: 'http://127.0.0.1:8450',
+    apiToken: '',
+    autoImportQqGids: true,
 };
 
 const DEFAULT_ACCOUNT_CONFIG: AccountConfig = {
@@ -497,6 +506,7 @@ const globalConfig: GlobalConfig = {
     loginSettings: { ...DEFAULT_LOGIN_SETTINGS },
     offlineReminder: { ...DEFAULT_OFFLINE_REMINDER },
     systemConfig: null,
+    captureConfig: { ...DEFAULT_CAPTURE_CONFIG },
 };
 
 function resolveAccountId(accountId: unknown): string {
@@ -549,6 +559,19 @@ function loadGlobalConfig(): void {
                     napCatSignature: typeof data.loginSettings.napCatSignature === 'string'
                         ? data.loginSettings.napCatSignature.trim()
                         : DEFAULT_LOGIN_SETTINGS.napCatSignature,
+                };
+            }
+
+            if (data.captureConfig && typeof data.captureConfig === 'object') {
+                globalConfig.captureConfig = {
+                    defaultsVersion: DEFAULT_CAPTURE_CONFIG.defaultsVersion,
+                    enabled: data.captureConfig.enabled === undefined
+                        ? DEFAULT_CAPTURE_CONFIG.enabled
+                        : data.captureConfig.enabled === true,
+                    embedded: data.captureConfig.embedded !== false,
+                    apiBase: String(data.captureConfig.apiBase || DEFAULT_CAPTURE_CONFIG.apiBase).trim(),
+                    apiToken: String(data.captureConfig.apiToken || '').trim(),
+                    autoImportQqGids: data.captureConfig.autoImportQqGids !== false,
                 };
             }
 
@@ -609,6 +632,7 @@ module.exports = {
     DEFAULT_FRIENDS_LIST_CACHE_TTL_SEC,
     DEFAULT_OFFLINE_REMINDER,
     DEFAULT_LOGIN_SETTINGS,
+    DEFAULT_CAPTURE_CONFIG,
     DEFAULT_ACCOUNT_CONFIG,
     ALLOWED_AUTOMATION_KEYS,
     // Mutable shared state (by reference)

@@ -11,6 +11,7 @@ const {
     PUSHOO_CHANNELS,
     DEFAULT_OFFLINE_REMINDER,
     DEFAULT_LOGIN_SETTINGS,
+    DEFAULT_CAPTURE_CONFIG,
     globalConfig,
     normalizeAccountConfig,
     cloneAccountConfig,
@@ -113,6 +114,29 @@ function getOfflineReminder(): OfflineReminder {
     return normalizeOfflineReminder(globalConfig.offlineReminder);
 }
 
+function getCaptureConfig(): any {
+    return globalConfig.captureConfig
+        ? { ...DEFAULT_CAPTURE_CONFIG, ...globalConfig.captureConfig }
+        : { ...DEFAULT_CAPTURE_CONFIG };
+}
+
+function setCaptureConfig(config: any): any {
+    if (!config || typeof config !== 'object') return null;
+    const current = getCaptureConfig();
+    globalConfig.captureConfig = {
+        defaultsVersion: DEFAULT_CAPTURE_CONFIG.defaultsVersion,
+        enabled: config.enabled === true,
+        embedded: config.embedded !== false,
+        apiBase: String(config.apiBase || current.apiBase || DEFAULT_CAPTURE_CONFIG.apiBase).trim(),
+        apiToken: config.apiToken === undefined || config.apiToken === null || config.apiToken === ''
+            ? current.apiToken
+            : String(config.apiToken).trim(),
+        autoImportQqGids: config.autoImportQqGids !== false,
+    };
+    saveGlobalConfig();
+    return { ...globalConfig.captureConfig };
+}
+
 function normalizeLoginSettings(input: unknown): LoginSettings {
     const src: Record<string, any> = (input && typeof input === 'object') ? input as Record<string, any> : {};
     return {
@@ -213,6 +237,8 @@ module.exports = {
     setLoginSettings,
     getOfflineReminder,
     setOfflineReminder,
+    getCaptureConfig,
+    setCaptureConfig,
     getSystemConfig,
     setSystemConfig,
 };
