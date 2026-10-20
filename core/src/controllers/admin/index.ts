@@ -151,7 +151,16 @@ function startAdminServer(dataProvider: any): void {
 
     const webDist = path.join(__dirname, '../../../../web/dist');
     if (fs.existsSync(webDist)) {
-        app.use(express.static(webDist));
+        // 入口 HTML 始终回源校验，避免发版后浏览器继续运行旧前端；带哈希的 assets 长缓存
+        app.use(express.static(webDist, {
+            setHeaders: (res, filePath) => {
+                if (filePath.endsWith('.html')) {
+                    res.setHeader('Cache-Control', 'no-cache');
+                } else if (/[/\\]assets[/\\]/.test(filePath)) {
+                    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+                }
+            },
+        }));
     } else {
         adminLogger.warn('web build not found', { webDist });
         app.get('/', (_req: any, res: any) => res.send('web build not found. Please build the web project.'));

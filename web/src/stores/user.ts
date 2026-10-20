@@ -46,7 +46,8 @@ export const useUserStore = defineStore('user', () => {
   const isLoggedIn = computed(() => !!token.value)
   const username = computed(() => userInfo.value?.username || '')
   const avatar = computed(() => userInfo.value?.avatar || '')
-  const role = computed<Role>(() => userInfo.value?.role || 'admin')
+  // 用户信息缺失或异常时一律按普通用户处理，避免误调管理员专属接口
+  const role = computed<Role>(() => userInfo.value?.role === 'admin' ? 'admin' : 'user')
   const isAdmin = computed(() => role.value === 'admin')
   const accountLimit = computed(() => userInfo.value?.accountLimit ?? 0)
   const cardExpiry = computed(() => userInfo.value?.card?.expiresAt ?? null)

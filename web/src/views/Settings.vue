@@ -41,17 +41,17 @@ const settingStore = useSettingStore()
 const statusStore = useStatusStore()
 
 type SettingsTab = 'account' | 'strategy' | 'automation' | 'system' | 'cards' | 'users' | 'profile'
-const isAdmin = userStore.isAdmin
+const { isAdmin } = storeToRefs(userStore)
 const adminTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'system', 'cards', 'users']
 const userTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'profile']
-const settingsTabKeys: SettingsTab[] = isAdmin ? adminTabKeys : userTabKeys
+const settingsTabKeys: SettingsTab[] = isAdmin.value ? adminTabKeys : userTabKeys
 const storedTab = localStorage.getItem('settings-active-tab')
 const queryTab = String(route.query.tab || '')
 const initialTab = settingsTabKeys.includes(queryTab as SettingsTab)
   ? queryTab as SettingsTab
   : storedTab && settingsTabKeys.includes(storedTab as SettingsTab)
     ? storedTab as SettingsTab
-    : (storedTab === 'user' && isAdmin ? 'system' : 'account')
+    : (storedTab === 'user' && isAdmin.value ? 'system' : 'account')
 const activeTab = ref<SettingsTab>(initialTab)
 
 watch(activeTab, (newTab) => {
@@ -85,10 +85,10 @@ const userTabs = [
   { key: 'profile', label: '账户中心', icon: 'i-carbon-user-avatar' },
 ] as const
 
-const tabs = isAdmin ? adminTabs : userTabs
+const tabs = computed(() => (isAdmin.value ? adminTabs : userTabs))
 
 function setActiveTab(value: string) {
-  if (tabs.some(tab => tab.key === value))
+  if (tabs.value.some(tab => tab.key === value))
     activeTab.value = value as typeof activeTab.value
 }
 
@@ -166,6 +166,15 @@ function getAccountExpiryBadge(acc: any): { text: string, cls: string } | null {
   return { text: `剩 ${remainDays} 天`, cls: 'bg-amber-50 text-amber-600 dark:bg-amber-900/25 dark:text-amber-400' }
 }
 
+let adminSettingsLoaded = false
+
+async function loadAdminSettings() {
+  if (adminSettingsLoaded)
+    return
+  adminSettingsLoaded = true
+  await Promise.all([loadSystemConfig(), loadDevicePresets(), loadBranding()])
+}
+
 onMounted(async () => {
   await accountStore.fetchAccounts()
   if (!currentAccountId.value && accounts.value.length > 0 && accounts.value[0]) {
@@ -173,9 +182,15 @@ onMounted(async () => {
   }
   if (currentAccountId.value)
     await loadStrategyData(currentAccountId.value)
-  if (isAdmin) {
-    await Promise.all([loadSystemConfig(), loadDevicePresets(), loadBranding()])
-  }
+  // 身份可能由 Sidebar 挂载时的 fetchUserInfo 自愈修正，此处按当前值加载
+  if (isAdmin.value)
+    void loadAdminSettings()
+})
+
+// 身份修正为管理员后补载管理员专属配置
+watch(isAdmin, (value) => {
+  if (value)
+    void loadAdminSettings()
 })
 
 function openSettings(account: any) {
