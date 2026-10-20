@@ -11,6 +11,7 @@ import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
 import BaseTextarea from '@/components/ui/BaseTextarea.vue'
+import MengkaLoginPanel from '@/components/MengkaLoginPanel.vue'
 import { useUserStore } from '@/stores/user'
 import { runWxLoginStatusPoll } from '@/utils/wx-login-poll'
 
@@ -325,6 +326,9 @@ const mengkaLogin = useMengkaLogin({
     await loadMengkaState()
   },
 })
+
+// 验证流程进行中（扫码/短信/滑块）禁止误关弹窗
+const mengkaLoginBusy = computed(() => ['qr', 'verify', 'sms', 'slider'].includes(mengkaLogin.step))
 
 async function addQrAccount(platform: 'wx' | 'qq', code: string, nickname: string) {
   const name = form.name.trim() || nickname
@@ -1030,15 +1034,15 @@ onBeforeUnmount(() => {
 <template>
   <NModal
     :show="show"
-    :mask-closable="!loading && !wxLoading && !qqLoading && !captureLoading && !captureCompleting && mengkaLogin.step !== 'qr'"
-    :close-on-esc="!loading && !wxLoading && !qqLoading && !captureLoading && !captureCompleting && mengkaLogin.step !== 'qr'"
+    :mask-closable="!loading && !wxLoading && !qqLoading && !captureLoading && !captureCompleting && !mengkaLoginBusy"
+    :close-on-esc="!loading && !wxLoading && !qqLoading && !captureLoading && !captureCompleting && !mengkaLoginBusy"
     @update:show="value => !value && close()"
   >
     <NCard
       class="account-modal-card"
       :title="editData ? '编辑账号' : '添加账号'"
       :bordered="false"
-      :closable="!loading && !wxLoading && !qqLoading && !captureLoading && !captureCompleting && mengkaLogin.step !== 'qr'"
+      :closable="!loading && !wxLoading && !qqLoading && !captureLoading && !captureCompleting && !mengkaLoginBusy"
       @close="close"
     >
       <div class="account-modal-content overflow-y-auto">
@@ -1202,73 +1206,33 @@ onBeforeUnmount(() => {
             获取农场授权 Code
           </BaseButton>
           <div class="border-t pt-3" style="border-color: color-mix(in srgb, var(--theme-text) 12%, transparent)">
-            <template v-if="mengkaLogin.step === 'idle'">
-              <BaseButton variant="outline" block @click="mengkaLogin.step = 'form'">
-                扫码登录新 QQ
-              </BaseButton>
-              <p class="mt-1 text-xs opacity-60">
-                列表里没有你的 QQ？发起后用手机 QQ 扫码即可自动登录萌卡并绑定
-              </p>
-            </template>
-            <template v-else-if="mengkaLogin.step === 'form'">
-              <div class="space-y-3">
-                <BaseInput
-                  v-model="mengkaLogin.qq"
-                  label="QQ 号"
-                  placeholder="请输入要登录的 QQ 号"
-                  class="farm-input"
-                />
-                <BaseInput
-                  v-model="mengkaLogin.password"
-                  type="password"
-                  label="QQ 密码（可选）"
-                  placeholder="部分账号需要密码验证，建议填写"
-                  class="farm-input"
-                />
-                <p class="text-xs opacity-60">
-                  发起后用手机 QQ 扫描二维码完成确认，成功后自动绑定到当前账号
-                </p>
-                <p v-if="mengkaLogin.error" class="text-sm text-red-500">
-                  {{ mengkaLogin.error }}
-                </p>
-                <div class="flex gap-2">
-                  <BaseButton variant="outline" @click="mengkaLogin.reset">
-                    返回
-                  </BaseButton>
-                  <BaseButton variant="primary" class="flex-1" :loading="mengkaLogin.loading" @click="mengkaLogin.start">
-                    发起登录
-                  </BaseButton>
-                </div>
-              </div>
-            </template>
-            <template v-else>
-              <div class="flex flex-col items-center gap-2">
-                <div v-if="mengkaLogin.qrDataUrl" class="bg-white p-2">
-                  <img :src="mengkaLogin.qrDataUrl" alt="萌卡登录二维码" class="h-44 w-44">
-                </div>
-                <div v-else class="h-44 w-44 flex items-center justify-center text-sm opacity-60">
-                  二维码生成中...
-                </div>
-                <p class="text-sm" :style="{ color: 'var(--theme-text)' }">
-                  {{ mengkaLogin.status }}
-                </p>
-                <p v-if="mengkaLogin.error" class="text-sm text-red-500">
-                  {{ mengkaLogin.error }}
-                </p>
-              </div>
-              <div class="mt-3 flex gap-2">
-                <BaseButton variant="outline" @click="mengkaLogin.reset">
-                  返回
+              <template v-if="mengkaLogin.step === 'idle'">
+                <BaseButton variant="outline" block @click="mengkaLogin.step = 'form'">
+                  扫码登录新 QQ
                 </BaseButton>
-                <BaseButton variant="outline" class="flex-1" :loading="mengkaLogin.loading" @click="mengkaLogin.start">
-                  重新发起
-                </BaseButton>
-              </div>
-            </template>
-          </div>
-          <BaseButton variant="outline" block @click="close">
-            取消
-          </BaseButton>
+                <p class="mt-1 text-xs opacity-60">
+                  列表里没有你的 QQ？发起后按提示完成验证（短信验证码 / 扫码）即可自动登录萌卡并绑定
+                </p>
+              </template>
+              <MengkaLoginPanel
+                v-else
+                :login="mengkaLogin"
+                mode="add"
+                @close="mengkaLogin.reset()"
+              >
+                <template #header>
+                  <p class="text-sm text-gray-900 font-bold dark:text-gray-100">
+                    扫码登录新 QQ
+                  </p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    发起后按提示完成验证（短信验证码 / 扫码），成功后自动绑定到当前账号
+                  </p>
+                </template>
+              </MengkaLoginPanel>
+            </div>
+            <BaseButton variant="outline" block @click="close">
+              取消
+            </BaseButton>
         </div>
         <div v-else-if="activeLoginTab === 'capture'" class="space-y-4" role="tabpanel" aria-label="抓包登录">
           <BaseInput

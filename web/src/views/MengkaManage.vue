@@ -5,8 +5,8 @@ import { useIntervalFn } from '@vueuse/core'
 import { computed, onMounted, ref } from 'vue'
 import api, { getApiErrorMessage } from '@/api'
 import ConfirmModal from '@/components/ConfirmModal.vue'
+import MengkaLoginPanel from '@/components/MengkaLoginPanel.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
-import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import { useMengkaLogin } from '@/composables/useMengkaLogin'
@@ -54,6 +54,9 @@ const mengkaLogin = useMengkaLogin({
     await loadBots()
   },
 })
+
+// 验证流程进行中（扫码/短信/滑块）禁止误关弹窗
+const mengkaLoginBusy = computed(() => ['qr', 'verify', 'sms', 'slider'].includes(mengkaLogin.step))
 
 function formatTs(value: number | string): string {
   const ts = Number(value)
@@ -139,12 +142,6 @@ function openRelogin(bot: MengkaBot) {
   reloginBot.value = bot
   mengkaLogin.reset()
   showAddModal.value = true
-}
-
-async function submitRelogin() {
-  if (!reloginBot.value)
-    return
-  await mengkaLogin.relogin(reloginBot.value.selfId)
 }
 
 function askUnbind(bot: MengkaBot) {
@@ -332,112 +329,39 @@ onMounted(() => {
     </div>
 
     <!-- 扫码添加 / 重新登录弹窗 -->
-    <NModal :show="showAddModal" @update:show="value => !mengkaLogin.loading && (showAddModal = value)">
+    <NModal :show="showAddModal" @update:show="value => !mengkaLoginBusy && (showAddModal = value)">
       <NCard
         class="mengka-modal-card"
-        :title="mengkaLogin.step === 'qr' ? '等待 QQ 扫码' : (dialogMode === 'relogin' ? '重新登录' : '扫码添加 QQ')"
+        :title="dialogMode === 'relogin' ? '重新登录' : '扫码添加 QQ'"
         :bordered="false"
         :closable="!mengkaLogin.loading"
         @close="mengkaLogin.reset(); showAddModal = false"
       >
-        <div class="space-y-4">
-          <template v-if="mengkaLogin.step === 'idle'">
-            <template v-if="dialogMode === 'relogin' && reloginBot">
-              <div class="rounded-xl p-3 text-sm" style="background: rgba(127, 127, 127, 0.08)">
-                <div class="font-bold">
-                  {{ reloginBot.nickname || reloginBot.selfId }}
-                </div>
-                <div class="mt-1 text-xs opacity-60">
-                  QQ {{ reloginBot.selfId }} · 当前{{ reloginBot.online ? '在线' : '离线' }}
-                </div>
-              </div>
-              <BaseInput
-                v-model="mengkaLogin.password"
-                type="password"
-                label="QQ 密码（可选）"
-                placeholder="缓存密码失效时请填写，将同步更新到萌卡"
-                class="farm-input"
+        <MengkaLoginPanel
+          :login="mengkaLogin"
+          :mode="dialogMode"
+          :relogin-bot="reloginBot"
+          @close="mengkaLogin.reset(); showAddModal = false"
+        >
+          <template #header>
+            <div v-if="isAdmin">
+              <BaseSelect
+                v-model="ownerTarget"
+                label="账号归属"
+                :options="[
+                  { label: '超级管理员', value: '' },
+                  ...ownerOptions.map(user => ({ label: user.username, value: user.username })),
+                ]"
               />
-              <p class="text-xs opacity-60">
-                发起后若需要验证会弹出二维码，用手机 QQ 扫码确认即可恢复在线
-              </p>
-              <p v-if="mengkaLogin.error" class="text-sm text-red-500">
-                {{ mengkaLogin.error }}
-              </p>
-              <div class="flex justify-end gap-2 pt-2">
-                <BaseButton variant="outline" @click="mengkaLogin.reset(); showAddModal = false">
-                  取消
-                </BaseButton>
-                <BaseButton variant="primary" :loading="mengkaLogin.loading" @click="submitRelogin">
-                  发起重新登录
-                </BaseButton>
-              </div>
-            </template>
-            <template v-else>
-              <div v-if="isAdmin">
-                <BaseSelect
-                  v-model="ownerTarget"
-                  label="账号归属"
-                  :options="[
-                    { label: '超级管理员', value: '' },
-                    ...ownerOptions.map(user => ({ label: user.username, value: user.username })),
-                  ]"
-                />
-                <p class="mt-1 text-xs opacity-60">
-                  扫码登录的新 QQ 会归属到所选用户
-                </p>
-              </div>
-              <BaseInput
-                v-model="mengkaLogin.qq"
-                label="QQ 号"
-                placeholder="请输入要登录的 QQ 号"
-                class="farm-input"
-              />
-              <BaseInput
-                v-model="mengkaLogin.password"
-                type="password"
-                label="QQ 密码（可选）"
-                placeholder="部分账号需要密码验证，建议填写"
-                class="farm-input"
-              />
-              <p class="text-xs opacity-60">
-                发起后用手机 QQ 扫描二维码完成确认，成功后自动绑定到当前账号
-              </p>
-              <p v-if="mengkaLogin.error" class="text-sm text-red-500">
-                {{ mengkaLogin.error }}
-              </p>
-              <div class="flex justify-end gap-2 pt-2">
-                <BaseButton variant="outline" @click="mengkaLogin.reset(); showAddModal = false">
-                  取消
-                </BaseButton>
-                <BaseButton variant="primary" :loading="mengkaLogin.loading" @click="mengkaLogin.start()">
-                  发起登录
-                </BaseButton>
-              </div>
-            </template>
-          </template>
-          <template v-else>
-            <div class="flex flex-col items-center gap-2">
-              <div v-if="mengkaLogin.qrDataUrl" class="bg-white p-2">
-                <img :src="mengkaLogin.qrDataUrl" alt="萌卡登录二维码" class="h-48 w-48">
-              </div>
-              <div v-else class="h-48 w-48 flex items-center justify-center text-sm opacity-60">
-                二维码生成中...
-              </div>
-              <p class="text-sm" :style="{ color: 'var(--theme-text)' }">
-                {{ mengkaLogin.status }}
-              </p>
-              <p v-if="mengkaLogin.error" class="text-sm text-red-500">
-                {{ mengkaLogin.error }}
+              <p class="mt-1 text-xs opacity-60">
+                扫码登录的新 QQ 会归属到所选用户
               </p>
             </div>
-            <div class="flex justify-end gap-2 pt-2">
-              <BaseButton variant="outline" @click="mengkaLogin.reset(); showAddModal = false">
-                取消
-              </BaseButton>
-            </div>
+            <p class="text-xs opacity-60">
+              发起后按提示完成验证（短信验证码 / 扫码），成功后自动绑定到当前账号
+            </p>
           </template>
-        </div>
+        </MengkaLoginPanel>
       </NCard>
     </NModal>
 
