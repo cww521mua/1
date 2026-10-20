@@ -172,7 +172,7 @@ async function loadAdminSettings() {
   if (adminSettingsLoaded)
     return
   adminSettingsLoaded = true
-  await Promise.all([loadSystemConfig(), loadDevicePresets(), loadBranding(), loadMengkaConfig()])
+  await Promise.all([loadSystemConfig(), loadDevicePresets(), loadBranding(), loadMengkaConfig(), loadMengkaBindings()])
 }
 
 onMounted(async () => {
@@ -1678,6 +1678,63 @@ async function handleTestMengka() {
   }
 }
 
+// ==================== 萌卡绑定管理（管理员） ====================
+interface MengkaBindingItem { selfId: string, owner: string, nickname: string, boundAt: number }
+const mengkaBindings = ref<MengkaBindingItem[]>([])
+const mengkaBindingsLoading = ref(false)
+const mengkaUnbindingId = ref('')
+const showUnbindConfirm = ref(false)
+const unbindTarget = ref<MengkaBindingItem | null>(null)
+const unbindLoading = ref(false)
+
+async function loadMengkaBindings() {
+  mengkaBindingsLoading.value = true
+  try {
+    const { data } = await api.get('/api/mengka/bindings', { skipErrorToast: true } as any)
+    mengkaBindings.value = data?.ok && Array.isArray(data.data?.bindings) ? data.data.bindings : []
+  }
+  catch {
+    mengkaBindings.value = []
+  }
+  finally {
+    mengkaBindingsLoading.value = false
+  }
+}
+
+function askUnbindMengkaBinding(item: MengkaBindingItem) {
+  unbindTarget.value = item
+  showUnbindConfirm.value = true
+}
+
+async function confirmUnbindMengkaBinding() {
+  const target = unbindTarget.value
+  if (!target) return
+  unbindLoading.value = true
+  try {
+    const { data } = await api.delete(`/api/mengka/bindings/${target.selfId}`)
+    if (data?.ok) {
+      showAlert('已解除绑定', 'primary')
+      showUnbindConfirm.value = false
+      unbindTarget.value = null
+      await loadMengkaBindings()
+    }
+    else {
+      showAlert(getApiErrorMessage(data, '解绑失败'), 'danger')
+    }
+  }
+  catch (e: any) {
+    showAlert(`解绑失败: ${getApiErrorMessage(e, '未知错误')}`, 'danger')
+  }
+  finally {
+    unbindLoading.value = false
+  }
+}
+
+function formatBindingTime(ts: number) {
+  if (!ts) return '-'
+  return new Date(ts).toLocaleString('zh-CN', { hour12: false })
+}
+
 async function handleSaveSystemConfig() {
   systemConfigSaving.value = true
   try {
@@ -2562,6 +2619,39 @@ async function handleResetSystemConfig() {
                     保存萌卡配置
                   </BaseButton>
                 </div>
+
+                <div class="mt-3 border-t pt-3 dark:border-gray-700">
+                  <div class="flex items-center justify-between">
+                    <p class="text-sm text-gray-900 font-bold dark:text-gray-100">
+                      绑定管理
+                    </p>
+                    <BaseButton variant="ghost" size="sm" :loading="mengkaBindingsLoading" @click="loadMengkaBindings">
+                      刷新
+                    </BaseButton>
+                  </div>
+                  <p v-if="!mengkaBindings.length" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    暂无绑定。用户在添加账号弹窗「扫码登录新 QQ」成功后自动建立绑定
+                  </p>
+                  <div v-else class="mt-2 space-y-2">
+                    <div
+                      v-for="item in mengkaBindings"
+                      :key="item.selfId"
+                      class="flex items-center justify-between gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm dark:border-gray-700"
+                    >
+                      <div class="min-w-0">
+                        <div class="truncate text-gray-900 font-medium dark:text-gray-100">
+                          {{ item.nickname || item.selfId }}（{{ item.selfId }}）
+                        </div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">
+                          归属：{{ item.owner }} · {{ formatBindingTime(item.boundAt) }}
+                        </div>
+                      </div>
+                      <BaseButton variant="outline" size="sm" :loading="mengkaUnbindingId === item.selfId" @click="askUnbindMengkaBinding(item)">
+                        解绑
+                      </BaseButton>
+                    </div>
+                  </div>
+                </div>
               </section>
 
               <section class="farm-card rounded-lg p-4">
@@ -2611,6 +2701,18 @@ async function handleResetSystemConfig() {
                   </BaseButton>
                 </div>
               </section>
+
+              <ConfirmModal
+                :show="showUnbindConfirm"
+                :loading="unbindLoading"
+                title="解绑萌卡账号"
+                :message="unbindTarget ? `确定解绑 ${unbindTarget.nickname || unbindTarget.selfId}（${unbindTarget.selfId}）？解绑后用户 ${unbindTarget.owner} 将无法继续使用该萌卡账号` : ''"
+                confirm-text="确认解绑"
+                type="danger"
+                @close="!unbindLoading && (showUnbindConfirm = false)"
+                @cancel="!unbindLoading && (showUnbindConfirm = false)"
+                @confirm="confirmUnbindMengkaBinding"
+              />
 
               <section class="farm-card rounded-lg p-4">
                 <div class="mb-4 flex items-start gap-3">

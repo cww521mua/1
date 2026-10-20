@@ -5,6 +5,7 @@ import { NRadio, NRadioGroup } from 'naive-ui/es/radio'
 import { NTab, NTabs } from 'naive-ui/es/tabs'
 import { useIntervalFn } from '@vueuse/core'
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import QRCode from 'qrcode'
 import api, { getApiErrorMessage } from '@/api'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
@@ -305,6 +306,140 @@ async function fetchFarmCodeFromMengka() {
   }
   finally {
     mengkaLoading.value = false
+  }
+}
+
+// ==================== 萌卡扫码登录（把 QQ 登录进萌卡并绑定） ====================
+const mengkaSuccess = ref('')
+const mengkaLoginStep = ref<'idle' | 'form' | 'qr'>('idle')
+const mengkaLoginQq = ref('')
+const mengkaLoginPassword = ref('')
+const mengkaLoginLoading = ref(false)
+const mengkaLoginError = ref('')
+const mengkaLoginStatus = ref('')
+const mengkaQrDataUrl = ref('')
+const mengkaGuaranteeToken = ref('')
+const mengkaLoginQqPending = ref('')
+const mengkaLoginExpiresAt = ref(0)
+let mengkaPollTimer: ReturnType<typeof setTimeout> | undefined
+let mengkaPollVersion = 0
+
+function resetMengkaLogin() {
+  mengkaPollVersion += 1
+  if (mengkaPollTimer) {
+    clearTimeout(mengkaPollTimer)
+    mengkaPollTimer = undefined
+  }
+  mengkaLoginStep.value = 'idle'
+  mengkaLoginQq.value = ''
+  mengkaLoginPassword.value = ''
+  mengkaLoginLoading.value = false
+  mengkaLoginError.value = ''
+  mengkaLoginStatus.value = ''
+  mengkaQrDataUrl.value = ''
+  mengkaGuaranteeToken.value = ''
+  mengkaLoginQqPending.value = ''
+  mengkaLoginExpiresAt.value = 0
+}
+
+function mengkaLoginOwner(): string | undefined {
+  return userStore.isAdmin && ownerTarget.value ? ownerTarget.value : undefined
+}
+
+async function startMengkaLogin() {
+  const qq = mengkaLoginQq.value.trim()
+  if (!/^\d{5,12}$/.test(qq)) {
+    mengkaLoginError.value = '请输入有效的 QQ 号（5-12 位数字）'
+    return
+  }
+  mengkaLoginLoading.value = true
+  mengkaLoginError.value = ''
+  mengkaLoginStatus.value = ''
+  const version = ++mengkaPollVersion
+  try {
+    const payload: any = { qq }
+    const password = mengkaLoginPassword.value
+    if (password) payload.password = password
+    const owner = mengkaLoginOwner()
+    if (owner) payload.owner = owner
+    const { data } = await api.post('/api/mengka/login-qr/start', payload, { timeout: 90000 } as any)
+    if (version !== mengkaPollVersion)
+      return
+    if (!data?.ok) {
+      mengkaLoginError.value = getApiErrorMessage(data, '发起登录失败')
+      return
+    }
+    if (data.data?.mode === 'bound') {
+      mengkaSuccess.value = `${qq} 已登录萌卡并完成绑定，列表已更新`
+      resetMengkaLogin()
+      await loadMengkaState()
+      return
+    }
+    // mode === 'qr'：展示二维码并轮询
+    mengkaLoginQqPending.value = String(data.data?.qq || qq)
+    mengkaGuaranteeToken.value = String(data.data?.guaranteeToken || '')
+    mengkaLoginExpiresAt.value = Date.now() + (Number(data.data?.expiresIn) || 180) * 1000
+    try {
+      mengkaQrDataUrl.value = await QRCode.toDataURL(String(data.data?.qrUrl || ''), { width: 220, margin: 1 })
+    }
+    catch {
+      mengkaQrDataUrl.value = ''
+    }
+    mengkaLoginStep.value = 'qr'
+    mengkaLoginStatus.value = '等待 QQ 扫码'
+    void pollMengkaLogin()
+  }
+  catch (e: any) {
+    if (version === mengkaPollVersion)
+      mengkaLoginError.value = getApiErrorMessage(e, '发起登录失败')
+  }
+  finally {
+    if (version === mengkaPollVersion)
+      mengkaLoginLoading.value = false
+  }
+}
+
+async function pollMengkaLogin() {
+  const version = mengkaPollVersion
+  if (mengkaLoginStep.value !== 'qr' || !mengkaGuaranteeToken.value)
+    return
+  if (Date.now() > mengkaLoginExpiresAt.value) {
+    mengkaLoginStatus.value = ''
+    mengkaLoginError.value = '二维码已失效，请重新发起登录'
+    return
+  }
+  try {
+    const payload: any = { qq: mengkaLoginQqPending.value, guaranteeToken: mengkaGuaranteeToken.value }
+    const owner = mengkaLoginOwner()
+    if (owner) payload.owner = owner
+    const { data } = await api.post('/api/mengka/login-qr/poll', payload, { timeout: 30000 } as any)
+    if (version !== mengkaPollVersion || mengkaLoginStep.value !== 'qr')
+      return
+    if (!data?.ok) {
+      mengkaLoginError.value = getApiErrorMessage(data, '登录状态查询失败')
+      return
+    }
+    const state = String(data.data?.state || '')
+    if (state === 'confirmed') {
+      mengkaSuccess.value = `${mengkaLoginQqPending.value} 已登录萌卡并完成绑定，列表已更新`
+      resetMengkaLogin()
+      await loadMengkaState()
+      return
+    }
+    if (state === 'scanned') {
+      mengkaLoginStatus.value = '已扫码，请在手机上确认'
+    }
+    else if (state === 'expired') {
+      mengkaLoginStatus.value = ''
+      mengkaLoginError.value = '二维码已失效，请重新发起登录'
+      return
+    }
+    mengkaPollTimer = setTimeout(() => void pollMengkaLogin(), 2000)
+  }
+  catch (e: any) {
+    if (version !== mengkaPollVersion)
+      return
+    mengkaLoginError.value = getApiErrorMessage(e, '登录状态查询失败')
   }
 }
 
@@ -928,6 +1063,8 @@ async function copyCaptureValue(field: 'host' | 'port') {
 function close() {
   resetWxLogin()
   resetQqLogin()
+  resetMengkaLogin()
+  mengkaSuccess.value = ''
   stopCaptureCheck()
   void cancelCaptureSession()
   showCaptureHelp.value = false
@@ -944,6 +1081,8 @@ watch(() => props.show, (newVal) => {
     captureHelpMode.value = localStorage.getItem(CAPTURE_SUCCESS_STORAGE_KEY) === '1' ? 'daily' : 'first'
     activeLoginTab.value = 'code'
     resetWxLogin()
+    resetMengkaLogin()
+    mengkaSuccess.value = ''
     void loadLoginSettings()
     void loadCaptureConfig()
     void loadMengkaState()
@@ -1006,6 +1145,7 @@ watch(() => form.name, (name) => {
 onBeforeUnmount(() => {
   resetWxLogin()
   resetQqLogin()
+  resetMengkaLogin()
   stopCaptureCheck()
   void cancelCaptureSession()
 })
@@ -1147,9 +1287,77 @@ onBeforeUnmount(() => {
             <p v-if="mengkaError" class="text-sm text-red-500">
               {{ mengkaError }}
             </p>
+            <p v-if="mengkaSuccess" class="text-sm" style="color: #10b981">
+              {{ mengkaSuccess }}
+            </p>
             <BaseButton variant="primary" block :loading="mengkaLoading" @click="fetchFarmCodeFromMengka">
               获取农场授权 Code
             </BaseButton>
+            <div class="border-t pt-3" style="border-color: color-mix(in srgb, var(--theme-text) 12%, transparent)">
+              <template v-if="mengkaLoginStep === 'idle'">
+                <BaseButton variant="outline" block @click="mengkaLoginStep = 'form'">
+                  扫码登录新 QQ
+                </BaseButton>
+                <p class="mt-1 text-xs opacity-60">
+                  列表里没有你的 QQ？发起后用手机 QQ 扫码即可自动登录萌卡并绑定
+                </p>
+              </template>
+              <template v-else-if="mengkaLoginStep === 'form'">
+                <div class="space-y-3">
+                  <BaseInput
+                    v-model="mengkaLoginQq"
+                    label="QQ 号"
+                    placeholder="请输入要登录的 QQ 号"
+                    class="farm-input"
+                  />
+                  <BaseInput
+                    v-model="mengkaLoginPassword"
+                    type="password"
+                    label="QQ 密码（可选）"
+                    placeholder="部分账号需要密码验证，建议填写"
+                    class="farm-input"
+                  />
+                  <p class="text-xs opacity-60">
+                    发起后用手机 QQ 扫描二维码完成确认，成功后自动绑定到当前账号
+                  </p>
+                  <p v-if="mengkaLoginError" class="text-sm text-red-500">
+                    {{ mengkaLoginError }}
+                  </p>
+                  <div class="flex gap-2">
+                    <BaseButton variant="outline" @click="resetMengkaLogin">
+                      返回
+                    </BaseButton>
+                    <BaseButton variant="primary" class="flex-1" :loading="mengkaLoginLoading" @click="startMengkaLogin">
+                      发起登录
+                    </BaseButton>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="flex flex-col items-center gap-2">
+                  <div v-if="mengkaQrDataUrl" class="bg-white p-2">
+                    <img :src="mengkaQrDataUrl" alt="萌卡登录二维码" class="h-44 w-44">
+                  </div>
+                  <div v-else class="h-44 w-44 flex items-center justify-center text-sm opacity-60">
+                    二维码生成中...
+                  </div>
+                  <p class="text-sm" :style="{ color: 'var(--theme-text)' }">
+                    {{ mengkaLoginStatus }}
+                  </p>
+                  <p v-if="mengkaLoginError" class="text-sm text-red-500">
+                    {{ mengkaLoginError }}
+                  </p>
+                </div>
+                <div class="mt-3 flex gap-2">
+                  <BaseButton variant="outline" @click="resetMengkaLogin">
+                    返回
+                  </BaseButton>
+                  <BaseButton variant="outline" class="flex-1" :loading="mengkaLoginLoading" @click="startMengkaLogin">
+                    重新发起
+                  </BaseButton>
+                </div>
+              </template>
+            </div>
             <BaseButton variant="outline" block @click="close">
               取消
             </BaseButton>

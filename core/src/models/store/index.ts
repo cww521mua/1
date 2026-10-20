@@ -4,6 +4,7 @@ const globalConfig = require('./global-config');
 const accountConfig = require('./account-config');
 const accounts = require('./accounts');
 const brandIcon = require('./brand-icon');
+const mengkaBindings = require('./mengka-bindings');
 
 module.exports = {
     // Account config
@@ -69,6 +70,13 @@ module.exports = {
     getAccounts: accounts.getAccounts,
     addOrUpdateAccount: accounts.addOrUpdateAccount,
     deleteAccount: accounts.deleteAccount,
+
+    // Mengka bindings
+    getMengkaBindings: mengkaBindings.getMengkaBindings,
+    findMengkaBinding: mengkaBindings.findMengkaBinding,
+    findMengkaBindingsByOwner: mengkaBindings.findMengkaBindingsByOwner,
+    upsertMengkaBinding: mengkaBindings.upsertMengkaBinding,
+    deleteMengkaBinding: mengkaBindings.deleteMengkaBinding,
 
     // System config
     getSystemConfig: globalConfig.getSystemConfig,

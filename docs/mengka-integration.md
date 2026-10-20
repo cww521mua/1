@@ -1,6 +1,6 @@
 # 萌卡 NT 对接
 
-本文档说明面板与萌卡 NT 框架的两种对接方式：桥接插件自动推码与面板直连取码，以及对应的配置方法、接口清单与注意事项。
+本文档说明面板与萌卡 NT 框架的两种对接方式：桥接插件自动推码与面板直连取码，多用户隔离机制，以及对应的配置方法、接口清单与注意事项。
 
 ## 概述
 
@@ -21,6 +21,16 @@
 4. 插件按「自动推送间隔」分钟为在线 QQ 取码并 `POST /api/accounts`（按备注匹配续登）。
 
 ## 方式二：面板直连（取码）
+
+### 多用户隔离（默认开启）
+
+面板直连内置多用户隔离，用户无需接触萌卡 WebUI：
+
+- **面板内扫码接入**：用户在添加账号弹窗「QQ 扫码」页签点「扫码登录新 QQ」，填 QQ 号（可选填密码）发起，面板展示二维码，手机 QQ 扫码确认后自动登录进萌卡框架，并**绑定到当前面板用户**；
+- **严格隔离**：普通用户只能看到/取码绑定自己的萌卡 QQ；管理员可见全部（附归属标注），并可在添加账号时通过「账号归属」下拉代用户扫码接入；
+- **绑定存储**：`core/data/mengka-bindings.json`（面板侧权威来源），同时在萌卡侧写入授权租约（`set_account_access`，`owner_id` 为面板用户名）作备份；
+- **绑定管理**：设置 → 萌卡对接 → 绑定管理（管理员）：查看 QQ/昵称/归属/绑定时间，支持解绑（解绑后可被其他用户重新绑定）；
+- **注册即开通**：面板注册用户自动具备萌卡接入资格，注册流程无需任何萌卡侧操作；萌卡 WebUI 不对面板用户开放。
 
 ### 萌卡侧准备
 
@@ -43,6 +53,7 @@
 ## 数据与配置存储
 
 - 面板侧配置保存在 `core/data/store.json` 的 `mengka` 字段（`enabled` / `wsHost` / `wsPort` / `token`），随数据目录一同备份；
+- 萌卡 QQ 与面板用户的绑定关系保存在 `core/data/mengka-bindings.json`，随数据目录一同备份；
 - 令牌通过管理接口保存后不回显；
 - 面板 core 与萌卡的连接为常驻 WebSocket，断线每 15 秒自动重连；配置变更即时生效，无需重启。
 
@@ -53,8 +64,10 @@
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/mengka/status` | 连接状态与节点信息 |
-| GET | `/api/mengka/bots` | 萌卡账号列表（含在线状态与协议） |
-| POST | `/api/mengka/farm-code` | 为指定 `self_id` 获取农场授权 Code |
+| GET | `/api/mengka/bots` | 萌卡账号列表（按绑定归属过滤；管理员附 `owner`） |
+| POST | `/api/mengka/farm-code` | 为指定 `self_id` 获取农场授权 Code（校验归属） |
+| POST | `/api/mengka/login-qr/start` | 发起 QQ 扫码登录进萌卡（`{qq, password?, owner?}`） |
+| POST | `/api/mengka/login-qr/poll` | 轮询扫码状态，确认后自动写绑定与租约 |
 
 管理接口（仅超管）：
 
@@ -62,21 +75,27 @@
 | --- | --- | --- |
 | GET | `/api/settings/mengka-config` | 读取对接配置（令牌只返回是否已设置） |
 | POST | `/api/settings/mengka-config` | 保存对接配置并即时重连 |
+| GET | `/api/mengka/bindings` | 全部绑定列表 |
+| DELETE | `/api/mengka/bindings/:selfId` | 解绑指定 QQ（同时停用萌卡侧租约） |
 
 ## 关键实现
 
 | 文件 | 职责 |
 | --- | --- |
 | `core/src/services/mengka-connector.ts` | 萌卡正向 WebSocket 客户端：认证握手、action 调用、自动重连 |
-| `core/src/controllers/admin/mengka-routes.ts` | 状态 / 在线账号 / 取码 / 配置接口 |
+| `core/src/controllers/admin/mengka-routes.ts` | 状态 / 在线账号 / 取码 / 扫码登录 / 绑定管理 / 配置接口 |
+| `core/src/models/store/mengka-bindings.ts` | QQ ↔ 面板用户绑定存储与归属查询 |
 | `core/src/models/store/global-config.ts` | `mengka` 配置归一化与读写 |
 | `core/src/controllers/admin/account-routes.ts` | 管理员添加账号可指定归属用户（`owner`） |
-| `web/src/components/AccountModal.vue` | QQ 扫码页签的萌卡授权流程 |
-| `web/src/views/Settings.vue` | 萌卡对接配置卡片 |
+| `web/src/components/AccountModal.vue` | QQ 扫码页签的萌卡授权流程与「扫码登录新 QQ」子流程 |
+| `web/src/views/Settings.vue` | 萌卡对接配置卡片与绑定管理 |
 
 ## 注意事项
 
 - `get_qq_farm_code` 仅萌卡 **Android 协议** QQ 支持；Linux 协议账号取码会失败；
+- 扫码登录依赖萌卡 `add_account` / `login_account` / `create_login_qr` 链路：账号需要滑块/身份验证（code 140022007/140022008/140022010）时面板暂不支持代理，请到萌卡 WebUI 完成该账号的首次验证；密码错误（140022013）时按提示填写 QQ 密码重试；
+- 面板不会保存 QQ 密码（仅转发给萌卡，不落盘、不进日志）；
+- 萌卡 WebUI 建议用防火墙限制为仅面板服务器与管理员 IP 可访问（面板用户无需接触 WebUI）；
 - 萌卡核心为闭源二进制，会保管 QQ 登录凭据，部署前请自行评估信任成本；
 - 桥接插件与面板直连可并存：建议桥接负责存量账号自动续码，面板直连负责新号添加；
 - 面板与萌卡跨机部署时，务必用防火墙把正向 WS 端口限制为仅面板 IP 可访问。
