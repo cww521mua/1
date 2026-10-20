@@ -60,6 +60,13 @@ export const menuRoutes: MenuItem[] = [
     component: () => import('@/views/GameMall.vue'),
   },
   {
+    path: 'mengka',
+    name: 'mengka-manage',
+    label: '萌卡管理',
+    icon: 'i-carbon-qr-code',
+    component: () => import('@/views/MengkaManage.vue'),
+  },
+  {
     path: 'settings',
     name: 'Settings',
     label: '设置',

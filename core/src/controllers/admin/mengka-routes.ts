@@ -9,8 +9,9 @@ export {};
  * - POST /api/mengka/farm-code            取农场授权 Code（登录用户，校验归属）
  * - POST /api/mengka/login-qr/start       发起 QQ 扫码登录进萌卡（登录用户）
  * - POST /api/mengka/login-qr/poll        轮询扫码状态，确认后写绑定与租约（登录用户）
+ * - POST /api/mengka/relogin              重新登录掉线的萌卡账号（登录用户，校验归属）
  * - GET  /api/mengka/bindings             绑定列表（仅超管）
- * - DELETE /api/mengka/bindings/:selfId   解绑（仅超管）
+ * - DELETE /api/mengka/bindings/:selfId   解绑（绑定本人或超管）
  * - GET  /api/settings/mengka-config      读取对接配置（仅超管，不回显令牌）
  * - POST /api/settings/mengka-config      保存对接配置（仅超管）
  */
@@ -93,6 +94,17 @@ async function getBotNickname(selfId: string): Promise<string> {
     } catch {
         return '';
     }
+}
+
+/** 为等待安全验证的账号创建登录二维码（start 与 relogin 共用）。 */
+async function issueLoginQr(selfId: string): Promise<{ qrUrl: string, guaranteeToken: string, expiresIn: number }> {
+    const qr = await mengka.callAction('create_login_qr', { self_id: Number(selfId) }, QR_CREATE_TIMEOUT_MS);
+    const qrUrl = String(qr?.qr_url || '').trim();
+    const guaranteeToken = String(qr?.guarantee_token || '').trim();
+    if (!qrUrl || !guaranteeToken) {
+        throw new Error('萌卡未返回有效的登录二维码');
+    }
+    return { qrUrl, guaranteeToken, expiresIn: Number(qr?.expires_in) || 180 };
 }
 
 async function pickNodeId(): Promise<number> {
@@ -255,20 +267,15 @@ function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
                 }
 
                 if (LOGIN_CODE_NEEDS_QR.has(code)) {
-                    const qr = await mengka.callAction('create_login_qr', { self_id: Number(qq) }, QR_CREATE_TIMEOUT_MS);
-                    const qrUrl = String(qr?.qr_url || '').trim();
-                    const guaranteeToken = String(qr?.guarantee_token || '').trim();
-                    if (!qrUrl || !guaranteeToken) {
-                        throw new Error('萌卡未返回有效的登录二维码');
-                    }
+                    const qr = await issueLoginQr(qq);
                     return res.json({
                         ok: true,
                         data: {
                             mode: 'qr',
                             qq,
-                            qrUrl,
-                            guaranteeToken,
-                            expiresIn: Number(qr?.expires_in) || 180,
+                            qrUrl: qr.qrUrl,
+                            guaranteeToken: qr.guaranteeToken,
+                            expiresIn: qr.expiresIn,
                         },
                     });
                 }
@@ -311,7 +318,15 @@ function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
 
                 if (state === 'confirmed') {
                     const nickname = await getBotNickname(qq);
-                    await bindAccountToOwner(qq, owner, nickname);
+                    // 已绑定（如掉线后重新登录确认）保持原归属，仅同步昵称；新 QQ 才写绑定与租约
+                    const existing = store.findMengkaBinding(qq);
+                    if (existing) {
+                        if (existing.nickname !== nickname)
+                            store.upsertMengkaBinding(qq, existing.owner, nickname);
+                    }
+                    else {
+                        await bindAccountToOwner(qq, owner, nickname);
+                    }
                     mengkaLogger.info('萌卡 QQ 扫码登录成功', { qq, owner });
                     return res.json({ ok: true, data: { state: 'confirmed', qq, nickname } });
                 }
@@ -326,7 +341,66 @@ function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
         })();
     });
 
-    // 绑定管理（仅超管）
+    // 重新登录掉线的萌卡账号（缓存登录或扫码确认）
+    app.post('/api/mengka/relogin', (req: Request, res: Response) => {
+        (async () => {
+            if (!ensureMengkaEnabled(res)) return;
+            const selfId = String((req.body || {}).self_id || '').trim();
+            if (!/^\d{5,12}$/.test(selfId)) {
+                return res.status(400).json({ ok: false, error: '缺少有效的萌卡账号' });
+            }
+            const identity = getIdentity(ctx, req);
+            if (!isAdminIdentity(identity)) {
+                const binding = store.findMengkaBinding(selfId);
+                if (!binding || binding.owner !== identity.username) {
+                    return res.status(403).json({ ok: false, error: '无权操作该萌卡账号' });
+                }
+            }
+            try {
+                const bots = await mengka.getBots();
+                if (!bots.some(item => item.selfId === selfId)) {
+                    return res.status(404).json({ ok: false, error: '萌卡框架中不存在该账号' });
+                }
+                mengkaLogger.info('发起萌卡 QQ 重新登录', { selfId });
+                const loginResult = await mengka.callAction('login_account', { self_id: Number(selfId) }, LOGIN_TIMEOUT_MS);
+                const code = Number(loginResult?.code);
+
+                if (code === 0) {
+                    const nickname = await getBotNickname(selfId);
+                    return res.json({ ok: true, data: { mode: 'bound', qq: selfId, nickname } });
+                }
+
+                if (LOGIN_CODE_NEEDS_QR.has(code)) {
+                    const qr = await issueLoginQr(selfId);
+                    return res.json({
+                        ok: true,
+                        data: {
+                            mode: 'qr',
+                            qq: selfId,
+                            qrUrl: qr.qrUrl,
+                            guaranteeToken: qr.guaranteeToken,
+                            expiresIn: qr.expiresIn,
+                        },
+                    });
+                }
+
+                if (code === LOGIN_CODE_WRONG_PASSWORD) {
+                    return res.status(400).json({
+                        ok: false,
+                        error: '萌卡缓存密码已失效，请解绑后用「扫码登录新 QQ」重新添加',
+                        code,
+                    });
+                }
+
+                return res.status(502).json({ ok: false, error: String(loginResult?.message || `登录失败（code ${code}）`), code });
+            } catch (e: any) {
+                mengkaLogger.warn('萌卡 QQ 重新登录失败', { selfId, error: e?.message });
+                return handleApiError(res, e);
+            }
+        })();
+    });
+
+    // 绑定管理（列表仅超管）
     app.get('/api/mengka/bindings', (req: Request, res: Response) => {
         if (!requireAdmin(ctx, req, res)) return;
         try {
@@ -337,11 +411,17 @@ function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
     });
 
     app.delete('/api/mengka/bindings/:selfId', (req: Request, res: Response) => {
-        if (!requireAdmin(ctx, req, res)) return;
         try {
             const selfId = String(req.params.selfId || '').trim();
             if (!/^\d{5,12}$/.test(selfId)) {
                 return res.status(400).json({ ok: false, error: '无效的 QQ 号' });
+            }
+            const identity = getIdentity(ctx, req);
+            if (!isAdminIdentity(identity)) {
+                const binding = store.findMengkaBinding(selfId);
+                if (!binding || binding.owner !== identity.username) {
+                    return res.status(403).json({ ok: false, error: '无权解绑该萌卡账号' });
+                }
             }
             store.deleteMengkaBinding(selfId);
             try {

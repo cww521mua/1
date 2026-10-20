@@ -217,6 +217,23 @@ function status(): { enabled: boolean, configured: boolean, connected: boolean, 
     };
 }
 
+function normalizeBot(b: any): Record<string, unknown> {
+    const platform = String(b?.platform || '');
+    const clientType = String(b?.client_type || b?.clientType || '');
+    const isLinux = platform === 'linux' || clientType === 'linuxqq';
+    const status = Number(b?.status) || 0;
+    return {
+        selfId: String(b?.self_id ?? b?.selfId ?? ''),
+        nickname: String(b?.nickname || ''),
+        clientType: isLinux ? 'linuxqq' : 'android',
+        online: typeof b?.online === 'boolean' ? b.online : status === 1,
+        // 0 离线 / 1 在线 / 2 登录中
+        status,
+        lastActive: b?.last_active ?? '',
+        loginTime: b?.login_time ?? '',
+    };
+}
+
 async function getBots(): Promise<any[]> {
     const data = await callAction('get_bot_list', {}, 20000);
     const list = Array.isArray(data)
@@ -224,18 +241,7 @@ async function getBots(): Promise<any[]> {
         : (data && Array.isArray(data.items || data.accounts || data.bots)) ? (data.items || data.accounts || data.bots) : [];
     return list
         .filter((b: any) => b && (b.self_id != null || b.selfId != null))
-        .map((b: any) => {
-            const platform = String(b.platform || '');
-            const clientType = String(b.client_type || b.clientType || '');
-            const isLinux = platform === 'linux' || clientType === 'linuxqq';
-            const online = typeof b.online === 'boolean' ? b.online : Number(b.status) === 1;
-            return {
-                selfId: String(b.self_id ?? b.selfId ?? ''),
-                nickname: String(b.nickname || ''),
-                clientType: isLinux ? 'linuxqq' : 'android',
-                online,
-            };
-        });
+        .map(normalizeBot);
 }
 
 async function getFarmCode(selfId: unknown): Promise<string> {
@@ -269,6 +275,7 @@ module.exports = {
     callAction,
     status,
     getBots,
+    normalizeBot,
     getFarmCode,
     getNodes,
     notifyConfigChanged,

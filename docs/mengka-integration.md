@@ -27,6 +27,7 @@
 面板直连内置多用户隔离，用户无需接触萌卡 WebUI：
 
 - **面板内扫码接入**：添加账号弹窗独立「萌卡登录」页签（所有登录用户可见）→ 点「扫码登录新 QQ」，填 QQ 号（可选填密码）发起，面板展示二维码，手机 QQ 扫码确认后自动登录进萌卡框架，并**绑定到当前面板用户**；
+- **萌卡管理页**：侧边栏「萌卡管理」（所有登录用户）——替代萌卡 WebUI 的自助管理入口：查看我的 QQ（在线状态/最后活跃）、扫码添加新 QQ、掉线「重新登录」（缓存登录或扫码确认）、解绑；管理员可见全部账号（带归属标注）并可解绑任意；
 - **严格隔离**：普通用户只能看到/取码绑定自己的萌卡 QQ；管理员可见全部（附归属标注），并可在添加账号时通过「账号归属」下拉代用户扫码接入；
 - **绑定存储**：`core/data/mengka-bindings.json`（面板侧权威来源），同时在萌卡侧写入授权租约（`set_account_access`，`owner_id` 为面板用户名）作备份；
 - **绑定管理**：设置 → 萌卡对接 → 绑定管理（管理员）：查看 QQ/昵称/归属/绑定时间，支持解绑（解绑后可被其他用户重新绑定）；
@@ -68,6 +69,7 @@
 | POST | `/api/mengka/farm-code` | 为指定 `self_id` 获取农场授权 Code（校验归属） |
 | POST | `/api/mengka/login-qr/start` | 发起 QQ 扫码登录进萌卡（`{qq, password?, owner?}`） |
 | POST | `/api/mengka/login-qr/poll` | 轮询扫码状态，确认后自动写绑定与租约 |
+| POST | `/api/mengka/relogin` | 重新登录掉线的萌卡账号（校验归属；需验证时返回二维码） |
 
 管理接口（仅超管）：
 
@@ -76,7 +78,7 @@
 | GET | `/api/settings/mengka-config` | 读取对接配置（令牌只返回是否已设置） |
 | POST | `/api/settings/mengka-config` | 保存对接配置并即时重连 |
 | GET | `/api/mengka/bindings` | 全部绑定列表 |
-| DELETE | `/api/mengka/bindings/:selfId` | 解绑指定 QQ（同时停用萌卡侧租约） |
+| DELETE | `/api/mengka/bindings/:selfId` | 解绑指定 QQ（绑定本人或超管；同时停用萌卡侧租约） |
 
 ## 关键实现
 
@@ -88,6 +90,8 @@
 | `core/src/models/store/global-config.ts` | `mengka` 配置归一化与读写 |
 | `core/src/controllers/admin/account-routes.ts` | 管理员添加账号可指定归属用户（`owner`） |
 | `web/src/components/AccountModal.vue` | QQ 扫码页签的萌卡授权流程与「扫码登录新 QQ」子流程 |
+| `web/src/composables/useMengkaLogin.ts` | 扫码登录流程复用逻辑（弹窗与管理页共用） |
+| `web/src/views/MengkaManage.vue` | 萌卡管理页（列表/扫码添加/重新登录/解绑） |
 | `web/src/views/Settings.vue` | 萌卡对接配置卡片与绑定管理 |
 
 ## 注意事项
