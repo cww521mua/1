@@ -457,6 +457,31 @@ function createWorkerManager(options: WorkerManagerOptions) {
                 accountName: worker.name,
                 friendCount: saved.length,
             });
+        } else if (msg.type === 'friend_gid_seed_check') {
+            // 登录后从本地好友档案注入好友 GID：仅 QQ、账号当前无好友数据时生效，
+            // 档案 key 为账号自身游戏 gid，唯一写入来源是抓包登录
+            const selfGid = Number(msg.selfGid) || 0;
+            const platform = String(msg.platform || 'qq');
+            if (platform === 'qq' && selfGid > 0) {
+                const { getKnownFriendGids, setKnownFriendGids, findQqFriendGidArchive } = require('../models/store');
+                const currentKnown: number[] = getKnownFriendGids(accountId) || [];
+                if (currentKnown.length === 0) {
+                    const archive = findQqFriendGidArchive(String(Math.floor(selfGid)));
+                    if (archive && archive.gids.length > 0) {
+                        const seeded: number[] = setKnownFriendGids(accountId, archive.gids);
+                        worker.process.send({
+                            type: 'config_sync',
+                            config: buildConfigSnapshotForAccount(accountId),
+                        });
+                        log('好友', `已从本地好友档案导入 ${seeded.length} 个好友 GID`, {
+                            accountId: String(accountId),
+                            accountName: worker.name,
+                            friendCount: seeded.length,
+                            archiveKey: archive.gid,
+                        });
+                    }
+                }
+            }
         } else if (msg.type === 'push_notify') {
             const title = String(msg.title || '').trim();
             const content = String(msg.content || '').trim();

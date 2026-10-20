@@ -301,6 +301,16 @@ async function collectQqFriendGids(options: any): Promise<number> {
                 provider.broadcastConfig(accountId);
             }
         }
+        // 抓包登录是好友 GID 本地档案的唯一写入来源：
+        // 以账号自身游戏 gid 为 key 存档（与 QQ 一一对应、跨登录方式稳定），供其他登录方式复用
+        if (flow.accountGid && gids.length > 0) {
+            const archived = store.saveQqFriendGidArchive(flow.accountGid, gids);
+            logger.info('抓包好友 GID 已存入本地档案', {
+                accountId,
+                archiveKey: flow.accountGid,
+                archivedCount: archived.length,
+            });
+        }
         if (flow.result) flow.result.importedFriendCount = importedFriendCount;
         logger.info('抓包登录好友 GID 后台同步完成', {
             accountId,

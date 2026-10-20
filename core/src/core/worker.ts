@@ -596,6 +596,15 @@ async function startBot(config: any): Promise<void> {
     const onLoginSuccess = async (): Promise<void> => {
         if (!canContinueLogin() || loginReady) return;
         loginReady = true;
+
+        // QQ 账号登录成功后请求主进程从本地好友档案注入好友 GID
+        // （主进程仅在账号当前无好友数据时注入；档案仅由抓包登录写入）
+        if ((CONFIG.platform || 'qq') === 'qq') {
+            const selfGid = toNum(getUserState()?.gid);
+            if (selfGid > 0) {
+                sendToMaster({ type: 'friend_gid_seed_check', selfGid, platform: 'qq' });
+            }
+        }
         if (onSellGain) {
             networkEvents.off('sell', onSellGain);
         }

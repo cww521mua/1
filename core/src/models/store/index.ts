@@ -5,6 +5,7 @@ const accountConfig = require('./account-config');
 const accounts = require('./accounts');
 const brandIcon = require('./brand-icon');
 const mengkaBindings = require('./mengka-bindings');
+const qqFriendGids = require('./qq-friend-gids');
 
 module.exports = {
     // Account config
@@ -77,6 +78,10 @@ module.exports = {
     findMengkaBindingsByOwner: mengkaBindings.findMengkaBindingsByOwner,
     upsertMengkaBinding: mengkaBindings.upsertMengkaBinding,
     deleteMengkaBinding: mengkaBindings.deleteMengkaBinding,
+
+    // QQ 好友 GID 本地档案（抓包写入，其他登录方式读取）
+    findQqFriendGidArchive: qqFriendGids.findQqFriendGidArchive,
+    saveQqFriendGidArchive: qqFriendGids.saveQqFriendGidArchive,
 
     // System config
     getSystemConfig: globalConfig.getSystemConfig,
