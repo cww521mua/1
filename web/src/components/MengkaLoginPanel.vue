@@ -41,8 +41,10 @@ const props = defineProps<{
 
 defineEmits<{ (e: 'close'): void }>()
 
+const protocolTypeLabels: Record<string, string> = { Phone: '手机', Pad: '平板' }
+
 const protocolOptions = () => props.login.protocols.map(item => ({
-  label: `Android ${item.ver}${item.packagename ? `（${item.packagename}）` : ''}`,
+  label: `${protocolTypeLabels[item.type] || item.type} Android ${item.ver}`,
   value: item.id,
 }))
 

@@ -459,13 +459,13 @@ function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
         })();
     });
 
-    // 协议列表（添加账号时选择登录协议；农场取码仅 Android 协议支持）
+    // 协议列表（添加账号时选择登录协议；手机/平板均属 Android 侧，农场取码仅 Android 协议支持）
     app.get('/api/mengka/protocols', (req: Request, res: Response) => {
         (async () => {
             if (!ensureMengkaEnabled(res)) return;
             try {
                 const protocols = await mengka.callAction('get_protocol_list', {}, VERIFY_TIMEOUT_MS);
-                const list = (Array.isArray(protocols) ? protocols : []).filter(item => item && item.type === 'Phone');
+                const list = (Array.isArray(protocols) ? protocols : []).filter(item => item && (item.type === 'Phone' || item.type === 'Pad'));
                 res.json({ ok: true, data: { protocols: list } });
             } catch (e: any) {
                 handleApiError(res, e);

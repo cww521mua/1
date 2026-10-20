@@ -12,6 +12,7 @@ import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
 import BaseTextarea from '@/components/ui/BaseTextarea.vue'
 import MengkaLoginPanel from '@/components/MengkaLoginPanel.vue'
+import ConfirmModal from '@/components/ConfirmModal.vue'
 import { useUserStore } from '@/stores/user'
 import { runWxLoginStatusPoll } from '@/utils/wx-login-poll'
 
@@ -200,7 +201,7 @@ function usableNickname(value: string): string {
 }
 
 // ==================== 萌卡对接 ====================
-interface MengkaBot { selfId: string, nickname: string, clientType: string, online: boolean }
+interface MengkaBot { selfId: string, nickname: string, clientType: string, online: boolean, owner?: string | null }
 
 const userStore = useUserStore()
 const mengkaEnabled = ref(false)
@@ -214,16 +215,14 @@ const mengkaLoaded = ref(false)
 const ownerTarget = ref('')
 const ownerOptions = ref<{ username: string }[]>([])
 
-const mengkaBotOptions = computed(() =>
-  mengkaBots.value
-    .filter(bot => bot.clientType === 'android')
-    .map((bot) => {
-      const parts = [`${bot.nickname || bot.selfId}（${bot.selfId}）`, bot.online ? '在线' : '离线']
-      const owner = String((bot as any).owner || '')
-      if (owner) parts.push(`归属:${owner}`)
-      return { label: parts.join(' · '), value: bot.selfId }
-    }),
-)
+// 萌卡登录面板模式与解绑确认
+const mengkaLoginMode = ref<'add' | 'relogin'>('add')
+const mengkaReloginBot = ref<MengkaBot | null>(null)
+const showUnbindMengkaConfirm = ref(false)
+const unbindMengkaTarget = ref<MengkaBot | null>(null)
+const unbindMengkaLoading = ref(false)
+
+const mengkaListBots = computed(() => mengkaBots.value.filter(bot => bot.clientType === 'android'))
 
 const ownerSelectOptions = computed(() => [
   { label: '超级管理员', value: '' },
@@ -251,9 +250,9 @@ async function loadMengkaState() {
     if (mengkaEnabled.value && mengkaConnected.value) {
       const res = await api.get('/api/mengka/bots', { skipErrorToast: true } as any)
       mengkaBots.value = Array.isArray(res.data?.data?.bots) ? res.data.data.bots : []
-      const options = mengkaBotOptions.value
-      if (!options.some(opt => opt.value === mengkaSelectedBot.value))
-        mengkaSelectedBot.value = options[0]?.value || ''
+      const options = mengkaListBots.value
+      if (!options.some(opt => opt.selfId === mengkaSelectedBot.value))
+        mengkaSelectedBot.value = options[0]?.selfId || ''
       mengkaError.value = options.length ? '' : '暂无可用的萌卡账号，可扫码登录新 QQ 添加'
     }
     else if (mengkaEnabled.value) {
@@ -323,12 +322,66 @@ function mengkaLoginOwner(): string | undefined {
 const mengkaLogin = useMengkaLogin({
   getOwner: mengkaLoginOwner,
   onSuccess: async () => {
+    mengkaLoginMode.value = 'add'
+    mengkaReloginBot.value = null
     await loadMengkaState()
   },
 })
 
 // 验证流程进行中（扫码/短信/滑块）禁止误关弹窗
 const mengkaLoginBusy = computed(() => ['qr', 'verify', 'sms', 'slider'].includes(mengkaLogin.step))
+
+function openMengkaAdd() {
+  mengkaLoginMode.value = 'add'
+  mengkaReloginBot.value = null
+  mengkaLogin.reset()
+  mengkaLogin.step = 'form'
+}
+
+function openMengkaRelogin(bot: MengkaBot) {
+  mengkaLoginMode.value = 'relogin'
+  mengkaReloginBot.value = bot
+  mengkaLogin.reset()
+}
+
+function closeMengkaLoginPanel() {
+  mengkaLogin.reset()
+  mengkaLoginMode.value = 'add'
+  mengkaReloginBot.value = null
+}
+
+function askUnbindMengka(bot: MengkaBot) {
+  unbindMengkaTarget.value = bot
+  showUnbindMengkaConfirm.value = true
+}
+
+async function confirmUnbindMengka() {
+  const target = unbindMengkaTarget.value
+  if (!target)
+    return
+  unbindMengkaLoading.value = true
+  try {
+    const { data } = await api.delete(`/api/mengka/bindings/${target.selfId}`)
+    if (data?.ok) {
+      showUnbindMengkaConfirm.value = false
+      unbindMengkaTarget.value = null
+      if (mengkaSelectedBot.value === target.selfId)
+        mengkaSelectedBot.value = ''
+      await loadMengkaState()
+    }
+    else {
+      showUnbindMengkaConfirm.value = false
+      unbindMengkaTarget.value = null
+    }
+  }
+  catch {
+    showUnbindMengkaConfirm.value = false
+    unbindMengkaTarget.value = null
+  }
+  finally {
+    unbindMengkaLoading.value = false
+  }
+}
 
 async function addQrAccount(platform: 'wx' | 'qq', code: string, nickname: string) {
   const name = form.name.trim() || nickname
@@ -951,6 +1004,8 @@ function close() {
   resetWxLogin()
   resetQqLogin()
   mengkaLogin.reset()
+  mengkaLoginMode.value = 'add'
+  mengkaReloginBot.value = null
   stopCaptureCheck()
   void cancelCaptureSession()
   showCaptureHelp.value = false
@@ -1187,14 +1242,56 @@ onBeforeUnmount(() => {
             当前机器人节点：{{ mengkaNodeLabel }}
           </div>
           <div>
-            <p class="mb-1 text-sm opacity-70">
-              选择已绑定的萌卡账号，一键完成农场授权
+            <p class="mb-1.5 text-sm opacity-70">
+              我的萌卡 QQ（点击选择后一键授权；离线可重新登录）
             </p>
-            <BaseSelect
-              v-model="mengkaSelectedBot"
-              :options="mengkaBotOptions"
-              placeholder="选择要授权的萌卡账号"
-            />
+            <div v-if="mengkaListBots.length === 0" class="rounded-xl p-3 text-xs opacity-60" style="background: rgba(127, 127, 127, 0.08)">
+              还没有萌卡账号，点下方「扫码登录新 QQ」添加
+            </div>
+            <div v-else class="space-y-2">
+              <div
+                v-for="bot in mengkaListBots"
+                :key="bot.selfId"
+                class="flex items-center justify-between gap-2 border rounded-xl px-3 py-2 text-sm"
+                :style="{ borderColor: mengkaSelectedBot === bot.selfId ? 'var(--theme-primary)' : 'color-mix(in srgb, var(--theme-text) 15%, transparent)' }"
+                role="button"
+                @click="mengkaSelectedBot = bot.selfId"
+              >
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <span class="text-sm font-bold">{{ bot.nickname || bot.selfId }}</span>
+                    <span
+                      class="rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight"
+                      :class="bot.online ? 'bg-green-50 text-green-600 dark:bg-green-900/25 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'"
+                    >
+                      {{ bot.online ? '在线' : '离线' }}
+                    </span>
+                    <span
+                      v-if="userStore.isAdmin && bot.owner"
+                      class="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium leading-tight text-violet-600 dark:bg-violet-900/25 dark:text-violet-400"
+                    >
+                      归属：{{ bot.owner }}
+                    </span>
+                  </div>
+                  <p class="mt-0.5 text-xs opacity-60">
+                    QQ {{ bot.selfId }}
+                  </p>
+                </div>
+                <div class="flex flex-none items-center gap-1.5">
+                  <BaseButton
+                    v-if="!bot.online"
+                    variant="outline"
+                    size="sm"
+                    @click.stop="openMengkaRelogin(bot)"
+                  >
+                    重新登录
+                  </BaseButton>
+                  <BaseButton variant="ghost" size="sm" @click.stop="askUnbindMengka(bot)">
+                    解绑
+                  </BaseButton>
+                </div>
+              </div>
+            </div>
           </div>
           <p v-if="mengkaError" class="text-sm text-red-500">
             {{ mengkaError }}
@@ -1202,12 +1299,18 @@ onBeforeUnmount(() => {
           <p v-if="mengkaLogin.success" class="text-sm" style="color: #10b981">
             {{ mengkaLogin.success }}
           </p>
-          <BaseButton variant="primary" block :loading="mengkaLoading" @click="fetchFarmCodeFromMengka">
+          <BaseButton
+            variant="primary"
+            block
+            :loading="mengkaLoading"
+            :disabled="!mengkaSelectedBot"
+            @click="fetchFarmCodeFromMengka"
+          >
             获取农场授权 Code
           </BaseButton>
           <div class="border-t pt-3" style="border-color: color-mix(in srgb, var(--theme-text) 12%, transparent)">
-              <template v-if="mengkaLogin.step === 'idle'">
-                <BaseButton variant="outline" block @click="mengkaLogin.step = 'form'">
+              <template v-if="mengkaLoginMode === 'add' && mengkaLogin.step === 'idle'">
+                <BaseButton variant="outline" block @click="openMengkaAdd">
                   扫码登录新 QQ
                 </BaseButton>
                 <p class="mt-1 text-xs opacity-60">
@@ -1217,18 +1320,10 @@ onBeforeUnmount(() => {
               <MengkaLoginPanel
                 v-else
                 :login="mengkaLogin"
-                mode="add"
-                @close="mengkaLogin.reset()"
-              >
-                <template #header>
-                  <p class="text-sm text-gray-900 font-bold dark:text-gray-100">
-                    扫码登录新 QQ
-                  </p>
-                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    发起后按提示完成验证（短信验证码 / 扫码），成功后自动绑定到当前账号
-                  </p>
-                </template>
-              </MengkaLoginPanel>
+                :mode="mengkaLoginMode"
+                :relogin-bot="mengkaReloginBot"
+                @close="closeMengkaLoginPanel"
+              />
             </div>
             <BaseButton variant="outline" block @click="close">
               取消
@@ -1405,7 +1500,6 @@ onBeforeUnmount(() => {
             已装证书
           </BaseButton>
         </div>
-
         <div class="space-y-2">
           <div v-for="(step, index) in captureHelpSteps" :key="step" class="flex items-start gap-3">
             <span class="h-6 w-6 flex flex-none items-center justify-center rounded-full text-xs font-semibold text-white" style="background: var(--theme-primary)">
@@ -1449,6 +1543,19 @@ onBeforeUnmount(() => {
       </div>
     </NCard>
   </NModal>
+
+  <!-- 萌卡解绑确认 -->
+  <ConfirmModal
+    :show="showUnbindMengkaConfirm"
+    :loading="unbindMengkaLoading"
+    title="解绑萌卡账号"
+    :message="unbindMengkaTarget ? `确定解绑 ${unbindMengkaTarget.nickname || unbindMengkaTarget.selfId}（${unbindMengkaTarget.selfId}）？解绑后将无法使用该 QQ 一键授权，可重新扫码绑定` : ''"
+    confirm-text="确认解绑"
+    type="danger"
+    @close="!unbindMengkaLoading && (showUnbindMengkaConfirm = false)"
+    @cancel="!unbindMengkaLoading && (showUnbindMengkaConfirm = false)"
+    @confirm="confirmUnbindMengka"
+  />
 </template>
 
 <style scoped>
