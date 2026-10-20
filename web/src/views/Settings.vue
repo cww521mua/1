@@ -172,7 +172,7 @@ async function loadAdminSettings() {
   if (adminSettingsLoaded)
     return
   adminSettingsLoaded = true
-  await Promise.all([loadSystemConfig(), loadDevicePresets(), loadBranding()])
+  await Promise.all([loadSystemConfig(), loadDevicePresets(), loadBranding(), loadMengkaConfig()])
 }
 
 onMounted(async () => {
@@ -1588,6 +1588,96 @@ async function handleResetIcon() {
   }
 }
 
+// ==================== 萌卡对接 ====================
+const localMengka = ref({
+  enabled: false,
+  wsHost: '',
+  wsPort: 3001,
+  token: '',
+})
+const mengkaTokenSet = ref(false)
+const mengkaSaving = ref(false)
+const mengkaTesting = ref(false)
+const mengkaStatusText = ref('')
+
+function normalizeMengkaConfig(source: any) {
+  const portRaw = Number.parseInt(source?.wsPort, 10)
+  return {
+    enabled: source?.enabled === true,
+    wsHost: typeof source?.wsHost === 'string' ? source.wsHost.trim() : '',
+    wsPort: Number.isFinite(portRaw) && portRaw > 0 ? portRaw : 3001,
+    token: '',
+  }
+}
+
+async function loadMengkaConfig() {
+  try {
+    const { data } = await api.get('/api/settings/mengka-config')
+    if (data?.ok) {
+      localMengka.value = normalizeMengkaConfig(data.data)
+      mengkaTokenSet.value = data.data?.tokenSet === true
+    }
+  }
+  catch (e) {
+    console.error('加载萌卡对接配置失败:', e)
+  }
+}
+
+async function handleSaveMengkaConfig() {
+  if (localMengka.value.enabled && (!localMengka.value.wsHost.trim() || (!localMengka.value.token.trim() && !mengkaTokenSet.value))) {
+    showAlert('启用萌卡对接前，请填写服务地址和插件令牌', 'danger')
+    return
+  }
+  mengkaSaving.value = true
+  try {
+    const payload: any = {
+      enabled: localMengka.value.enabled,
+      wsHost: localMengka.value.wsHost.trim(),
+      wsPort: localMengka.value.wsPort,
+    }
+    if (localMengka.value.token.trim())
+      payload.token = localMengka.value.token.trim()
+    const { data } = await api.post('/api/settings/mengka-config', payload)
+    if (data?.ok) {
+      localMengka.value = normalizeMengkaConfig(data.data)
+      mengkaTokenSet.value = data.data?.tokenSet === true
+      mengkaStatusText.value = ''
+      showAlert('萌卡对接配置已保存', 'primary')
+    }
+    else {
+      showAlert(getApiErrorMessage(data, '保存失败'), 'danger')
+    }
+  }
+  catch (e: any) {
+    showAlert(`保存失败: ${getApiErrorMessage(e, '未知错误')}`, 'danger')
+  }
+  finally {
+    mengkaSaving.value = false
+  }
+}
+
+async function handleTestMengka() {
+  mengkaTesting.value = true
+  try {
+    const { data } = await api.get('/api/mengka/status')
+    if (data?.ok && data.data?.enabled === false) {
+      mengkaStatusText.value = '萌卡对接未启用'
+    }
+    else if (data?.ok && data.data?.connected) {
+      mengkaStatusText.value = '已连接萌卡框架'
+    }
+    else {
+      mengkaStatusText.value = `未连接${data?.data?.lastError ? `：${data.data.lastError}` : ''}`
+    }
+  }
+  catch (e: any) {
+    mengkaStatusText.value = `测试失败: ${getApiErrorMessage(e, '未知错误')}`
+  }
+  finally {
+    mengkaTesting.value = false
+  }
+}
+
 async function handleSaveSystemConfig() {
   systemConfigSaving.value = true
   try {
@@ -2418,6 +2508,58 @@ async function handleResetSystemConfig() {
                     @click="handleSaveBranding"
                   >
                     保存品牌设置
+                  </BaseButton>
+                </div>
+              </section>
+
+              <section class="farm-card rounded-lg p-4">
+                <div class="mb-4 flex items-start gap-3">
+                  <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-lg bg-cyan-50 text-cyan-600 dark:bg-cyan-900/25 dark:text-cyan-400">
+                    <span class="i-carbon-plug text-xl" />
+                  </div>
+                  <div>
+                    <h4 class="text-base text-gray-900 font-bold dark:text-gray-100">
+                      萌卡对接
+                    </h4>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      连接萌卡 NT 框架后，添加账号时可为在线 QQ 一键获取农场授权 Code
+                    </p>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div class="border border-gray-200 rounded-lg bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30">
+                    <BaseSwitch v-model="localMengka.enabled" label="启用萌卡对接" />
+                  </div>
+                  <div class="min-w-0 flex items-center text-xs text-gray-500 dark:text-gray-400">
+                    {{ mengkaStatusText || '启用后 QQ 扫码页签将优先使用萌卡在线账号取码' }}
+                  </div>
+                  <BaseInput
+                    v-model="localMengka.wsHost"
+                    label="萌卡服务地址"
+                    type="text"
+                    placeholder="如 140.210.9.224"
+                  />
+                  <BaseInput
+                    v-model="localMengka.wsPort"
+                    label="WebSocket 端口"
+                    type="text"
+                    placeholder="3001"
+                  />
+                  <BaseInput
+                    v-model="localMengka.token"
+                    label="插件服务令牌"
+                    type="password"
+                    :placeholder="mengkaTokenSet ? '已设置，留空保持不变' : '萌卡正向 WebSocket 服务令牌'"
+                  />
+                </div>
+
+                <div class="mt-3 flex items-center justify-between border-t pt-3 dark:border-gray-700">
+                  <BaseButton variant="outline" size="sm" :loading="mengkaTesting" @click="handleTestMengka">
+                    测试连接
+                  </BaseButton>
+                  <BaseButton variant="primary" size="sm" :loading="mengkaSaving" @click="handleSaveMengkaConfig">
+                    保存萌卡配置
                   </BaseButton>
                 </div>
               </section>

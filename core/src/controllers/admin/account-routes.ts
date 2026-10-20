@@ -131,6 +131,16 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
                         });
                     }
                 }
+            } else if (!isUpdate) {
+                // 管理员可将新增账号归属到指定普通用户（萌卡/扫码批量接入场景）
+                const ownerName = String((body as any).owner || '').trim();
+                if (ownerName) {
+                    const ownerUser = userStore.getUserInfo(ownerName);
+                    if (!ownerUser) {
+                        return res.status(400).json({ ok: false, error: '归属用户不存在' });
+                    }
+                    (payload as any).owner = ownerName;
+                }
             }
 
             // 卡密管控：新增账号受实例账号上限约束，可附带核销时间卡（作为授权时长）或额度卡（提升上限）

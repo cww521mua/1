@@ -1,4 +1,4 @@
-import type { AccountConfig, AutomationConfig, BagSeedFallbackStrategy, BrandConfig, CaptureConfig, CardSettings, FertilizerLandType, GlobalConfig, IntervalConfig, LoginSettings, OfflineReminder, PlantingStrategy, QuietHoursConfig } from '../../types/config';
+import type { AccountConfig, AutomationConfig, BagSeedFallbackStrategy, BrandConfig, CaptureConfig, CardSettings, FertilizerLandType, GlobalConfig, IntervalConfig, LoginSettings, MengkaConfig, OfflineReminder, PlantingStrategy, QuietHoursConfig } from '../../types/config';
 export {};
 
 const { DEFAULT_TIME_ZONE, normalizeTimeZone, resolveClientVersion } = require('../../config/config');
@@ -64,6 +64,13 @@ const DEFAULT_BRAND: BrandConfig = {
     pageTitle: 'QQ农场智能助手',
     purchaseText: '',
     purchaseUrl: '',
+};
+
+const DEFAULT_MENGKA_CONFIG: MengkaConfig = {
+    enabled: false,
+    wsHost: '',
+    wsPort: 3001,
+    token: '',
 };
 
 const DEFAULT_ACCOUNT_CONFIG: AccountConfig = {
@@ -521,6 +528,7 @@ const globalConfig: GlobalConfig = {
     offlineReminder: { ...DEFAULT_OFFLINE_REMINDER },
     cardSettings: { ...DEFAULT_CARD_SETTINGS },
     branding: { ...DEFAULT_BRAND },
+    mengka: { ...DEFAULT_MENGKA_CONFIG },
     systemConfig: null,
     captureConfig: { ...DEFAULT_CAPTURE_CONFIG },
 };
@@ -570,6 +578,10 @@ function loadGlobalConfig(): void {
 
             if (data.branding && typeof data.branding === 'object') {
                 globalConfig.branding = data.branding;
+            }
+
+            if (data.mengka && typeof data.mengka === 'object') {
+                globalConfig.mengka = data.mengka;
             }
 
             if (data.loginSettings && typeof data.loginSettings === 'object') {
@@ -662,6 +674,7 @@ module.exports = {
     DEFAULT_CAPTURE_CONFIG,
     DEFAULT_CARD_SETTINGS,
     DEFAULT_BRAND,
+    DEFAULT_MENGKA_CONFIG,
     DEFAULT_ACCOUNT_CONFIG,
     ALLOWED_AUTOMATION_KEYS,
     // Mutable shared state (by reference)

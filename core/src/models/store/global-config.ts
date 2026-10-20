@@ -1,4 +1,4 @@
-import type { AccountConfig, BrandConfig, CardSettings, LoginSettings, OfflineReminder, SystemConfig, UIConfig } from '../../types/config';
+import type { AccountConfig, BrandConfig, CardSettings, LoginSettings, MengkaConfig, OfflineReminder, SystemConfig, UIConfig } from '../../types/config';
 export {};
 
 const { readTextFile, writeJsonFileAtomic } = require('../../services/json-db');
@@ -14,6 +14,7 @@ const {
     DEFAULT_CAPTURE_CONFIG,
     DEFAULT_CARD_SETTINGS,
     DEFAULT_BRAND,
+    DEFAULT_MENGKA_CONFIG,
     globalConfig,
     normalizeAccountConfig,
     cloneAccountConfig,
@@ -215,6 +216,35 @@ function setBrand(cfg: Partial<BrandConfig> | undefined): BrandConfig {
     return getBrand();
 }
 
+function normalizeMengkaConfig(input: unknown): MengkaConfig {
+    const src: Record<string, any> = (input && typeof input === 'object') ? input as Record<string, any> : {};
+    const portRaw = Number.parseInt(src.wsPort, 10);
+    return {
+        enabled: src.enabled === true,
+        wsHost: String(src.wsHost ?? DEFAULT_MENGKA_CONFIG.wsHost).trim(),
+        wsPort: Number.isFinite(portRaw) && portRaw > 0 && portRaw <= 65535 ? portRaw : DEFAULT_MENGKA_CONFIG.wsPort,
+        token: String(src.token ?? DEFAULT_MENGKA_CONFIG.token).trim(),
+    };
+}
+
+function getMengkaConfig(): MengkaConfig {
+    return normalizeMengkaConfig(globalConfig.mengka);
+}
+
+function setMengkaConfig(cfg: Partial<MengkaConfig> | undefined): MengkaConfig {
+    const current = getMengkaConfig();
+    const src: Record<string, any> = (cfg && typeof cfg === 'object') ? cfg as Record<string, any> : {};
+    globalConfig.mengka = normalizeMengkaConfig({
+        enabled: src.enabled !== undefined ? src.enabled : current.enabled,
+        wsHost: src.wsHost !== undefined ? src.wsHost : current.wsHost,
+        wsPort: src.wsPort !== undefined ? src.wsPort : current.wsPort,
+        // 令牌留空表示保持原值不变（管理接口不回显令牌）
+        token: src.token !== undefined && String(src.token).trim() !== '' ? src.token : current.token,
+    });
+    saveGlobalConfig();
+    return getMengkaConfig();
+}
+
 function setCardSettings(cfg: Partial<CardSettings> | undefined): CardSettings {
     const current = normalizeCardSettings(globalConfig.cardSettings);
     const src: Record<string, any> = (cfg && typeof cfg === 'object') ? cfg as Record<string, any> : {};
@@ -286,6 +316,7 @@ loadGlobalConfig();
 globalConfig.offlineReminder = normalizeOfflineReminder(globalConfig.offlineReminder);
 globalConfig.loginSettings = normalizeLoginSettings(globalConfig.loginSettings);
 globalConfig.branding = normalizeBrand(globalConfig.branding);
+globalConfig.mengka = normalizeMengkaConfig(globalConfig.mengka);
 if (sharedState.systemConfigMigrated) {
     saveGlobalConfig();
     sharedState.systemConfigMigrated = false;
@@ -303,6 +334,8 @@ module.exports = {
     setCardSettings,
     getBrand,
     setBrand,
+    getMengkaConfig,
+    setMengkaConfig,
     getCaptureConfig,
     setCaptureConfig,
     getSystemConfig,

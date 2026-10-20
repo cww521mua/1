@@ -21,6 +21,7 @@ const { mountAuthRoutes } = require('./auth-routes');
 const { mountCardRoutes } = require('./card-routes');
 const { mountAdminUserRoutes } = require('./user-routes');
 const { mountAccountRoutes } = require('./account-routes');
+const { mountMengkaRoutes } = require('./mengka-routes');
 const { mountFarmRoutes } = require('./farm-routes');
 const { mountFriendRoutes } = require('./friend-routes');
 const { mountActivityCenterRoutes } = require('./activity-center-routes');
@@ -177,6 +178,7 @@ function startAdminServer(dataProvider: any): void {
     mountFarmRoutes(app, ctx);
     mountFriendRoutes(app, ctx);
     mountAccountRoutes(app, ctx);
+    mountMengkaRoutes(app, ctx);
     mountActivityCenterRoutes(app, ctx);
     mountCommerceRoutes(app, ctx);
 

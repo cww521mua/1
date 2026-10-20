@@ -381,6 +381,7 @@ pnpm -C core exec tsx ../tools/audit-capture-compatibility.js <capture-dir>
 - [工具脚本](docs/tools.md)
 - [卡密系统与多用户](docs/card-key.md)
 - [推广系统](docs/referral.md)
+- [萌卡 NT 对接](docs/mengka-integration.md)
 - [品牌自定义](docs/branding.md)
 - [网络并发模型](docs/network-concurrency.md)
 - [TSDK Node.js 运行约定](docs/tsdk-runtime.md)

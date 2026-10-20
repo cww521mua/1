@@ -129,6 +129,17 @@ export interface BrandConfig {
   purchaseUrl: string;
 }
 
+export interface MengkaConfig {
+  /** 是否启用萌卡 NT 对接 */
+  enabled: boolean;
+  /** 萌卡正向 WebSocket 服务地址（不含 ws://） */
+  wsHost: string;
+  /** 萌卡正向 WebSocket 服务端口 */
+  wsPort: number;
+  /** 插件服务令牌；只在保存时写入，读取接口不回显 */
+  token: string;
+}
+
 export interface UIConfig {
   theme: 'light' | 'dark';
 }
@@ -177,6 +188,7 @@ export interface GlobalConfig {
   offlineReminder: OfflineReminder;
   cardSettings: CardSettings;
   branding: BrandConfig;
+  mengka: MengkaConfig;
   systemConfig: SystemConfig | null;
   captureConfig: CaptureConfig;
 }

@@ -57,6 +57,8 @@ module.exports = {
     setCardSettings: globalConfig.setCardSettings,
     getBrand: globalConfig.getBrand,
     setBrand: globalConfig.setBrand,
+    getMengkaConfig: globalConfig.getMengkaConfig,
+    setMengkaConfig: globalConfig.setMengkaConfig,
     findBrandIconFile: brandIcon.findIconFile,
     saveBrandIcon: brandIcon.saveBrandIcon,
     clearBrandIcon: brandIcon.clearBrandIcon,

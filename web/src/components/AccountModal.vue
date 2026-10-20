@@ -8,7 +8,9 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import api, { getApiErrorMessage } from '@/api'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
+import BaseSelect from '@/components/ui/BaseSelect.vue'
 import BaseTextarea from '@/components/ui/BaseTextarea.vue'
+import { useUserStore } from '@/stores/user'
 import { runWxLoginStatusPoll } from '@/utils/wx-login-poll'
 
 const props = defineProps<{
@@ -193,6 +195,117 @@ const GAME_PLACEHOLDER_NICK_RE = /创建账号|开启智慧农耕之旅/
 function usableNickname(value: string): string {
   const nick = String(value || '').trim()
   return nick && !GAME_PLACEHOLDER_NICK_RE.test(nick) ? nick : ''
+}
+
+// ==================== 萌卡对接 ====================
+interface MengkaBot { selfId: string, nickname: string, clientType: string, online: boolean }
+
+const userStore = useUserStore()
+const mengkaEnabled = ref(false)
+const mengkaConnected = ref(false)
+const mengkaNodeLabel = ref('')
+const mengkaBots = ref<MengkaBot[]>([])
+const mengkaSelectedBot = ref('')
+const mengkaLoading = ref(false)
+const mengkaError = ref('')
+const mengkaLoaded = ref(false)
+const ownerTarget = ref('')
+const ownerOptions = ref<{ username: string }[]>([])
+
+const mengkaBotOptions = computed(() =>
+  mengkaBots.value
+    .filter(bot => bot.online && bot.clientType === 'android')
+    .map(bot => ({
+      label: `${bot.nickname || bot.selfId}（${bot.selfId}）· 在线`,
+      value: bot.selfId,
+    })),
+)
+
+const mengkaAvailable = computed(() =>
+  mengkaEnabled.value && mengkaConnected.value && mengkaBotOptions.value.length > 0,
+)
+
+const ownerSelectOptions = computed(() => [
+  { label: '超级管理员', value: '' },
+  ...ownerOptions.value.map(user => ({ label: user.username, value: user.username })),
+])
+
+async function loadMengkaState() {
+  mengkaLoading.value = true
+  try {
+    const { data } = await api.get('/api/mengka/status', { skipErrorToast: true } as any)
+    mengkaEnabled.value = data?.ok && data.data?.enabled === true
+    mengkaConnected.value = data?.data?.connected === true
+    const nodes = Array.isArray(data?.data?.nodes) ? data.data.nodes : []
+    const node = nodes[0] || {}
+    const parts = [String(node.name || node.title || '').trim()]
+    const latency = Number(node.latency ?? node.delay)
+    if (Number.isFinite(latency) && latency >= 0)
+      parts.push(`<${latency}ms`)
+    const running = Number(node.running ?? node.account_count)
+    const total = Number(node.total ?? node.capacity)
+    if (Number.isFinite(running) && Number.isFinite(total) && total > 0)
+      parts.push(`${running}/${total} 运行`)
+    mengkaNodeLabel.value = parts.filter(Boolean).join('，') || '已连接萌卡框架'
+
+    if (mengkaEnabled.value && mengkaConnected.value) {
+      const res = await api.get('/api/mengka/bots', { skipErrorToast: true } as any)
+      mengkaBots.value = Array.isArray(res.data?.data?.bots) ? res.data.data.bots : []
+      const options = mengkaBotOptions.value
+      if (!options.some(opt => opt.value === mengkaSelectedBot.value))
+        mengkaSelectedBot.value = options[0]?.value || ''
+      mengkaError.value = options.length ? '' : '萌卡暂无在线的安卓 QQ，请先在萌卡中登录账号'
+    }
+
+    if (userStore.isAdmin && !ownerOptions.value.length) {
+      try {
+        const res = await api.get('/api/admin/users', { skipErrorToast: true } as any)
+        ownerOptions.value = Array.isArray(res.data?.data) ? res.data.data : []
+      }
+      catch { /* 归属选项加载失败不阻塞添加流程 */ }
+    }
+    mengkaLoaded.value = true
+  }
+  catch {
+    mengkaEnabled.value = false
+    mengkaLoaded.value = true
+  }
+  finally {
+    mengkaLoading.value = false
+  }
+}
+
+async function fetchFarmCodeFromMengka() {
+  const bot = mengkaBots.value.find(item => item.selfId === mengkaSelectedBot.value)
+  if (!bot) {
+    mengkaError.value = '请选择要授权的萌卡账号'
+    return
+  }
+  mengkaLoading.value = true
+  mengkaError.value = ''
+  try {
+    const { data } = await api.post('/api/mengka/farm-code', { self_id: bot.selfId }, { timeout: 70000 } as any)
+    if (!data?.ok) {
+      mengkaError.value = getApiErrorMessage(data, '获取农场授权 Code 失败')
+      return
+    }
+    const code = String(data.data?.code || '').trim()
+    const name = form.name.trim() || usableNickname(bot.nickname)
+    if (!name) {
+      mengkaError.value = '未获取到 QQ 昵称，请填写账号备注'
+      return
+    }
+    const payload: any = { name, code, platform: 'qq', loginType: 'manual' }
+    if (userStore.isAdmin && ownerTarget.value)
+      payload.owner = ownerTarget.value
+    await addAccount(payload, !!props.editData)
+  }
+  catch (e: any) {
+    mengkaError.value = getApiErrorMessage(e, '获取农场授权 Code 失败')
+  }
+  finally {
+    mengkaLoading.value = false
+  }
 }
 
 async function addQrAccount(platform: 'wx' | 'qq', code: string, nickname: string) {
@@ -833,6 +946,7 @@ watch(() => props.show, (newVal) => {
     resetWxLogin()
     void loadLoginSettings()
     void loadCaptureConfig()
+    void loadMengkaState()
     if (props.editData) {
       form.name = props.editData.name || ''
       form.code = props.editData.code || ''
@@ -855,10 +969,20 @@ watch(activeLoginTab, (tab) => {
     void startWxLogin()
   else if (tab === 'wx_qr' && !wechatQrLoginEnabled.value)
     activeLoginTab.value = 'code'
-  else if (tab === 'qq_qr' && qqQrLoginEnabled.value && !qqTaskId.value)
-    void startQqLogin()
-  else if (tab === 'qq_qr' && !qqQrLoginEnabled.value)
-    activeLoginTab.value = 'code'
+  else if (tab === 'qq_qr') {
+    void (async () => {
+      if (!mengkaLoaded.value)
+        await loadMengkaState()
+      if (activeLoginTab.value !== 'qq_qr')
+        return
+      if (mengkaAvailable.value)
+        return
+      if (qqQrLoginEnabled.value && !qqTaskId.value)
+        await startQqLogin()
+      else if (!qqQrLoginEnabled.value)
+        activeLoginTab.value = 'code'
+    })()
+  }
   if (tab !== 'wx_qr')
     resetWxLogin()
   if (tab !== 'qq_qr')
@@ -914,7 +1038,7 @@ onBeforeUnmount(() => {
           <NTab v-if="wechatQrLoginEnabled" name="wx_qr">
             微信扫码登录
           </NTab>
-          <NTab v-if="qqQrLoginEnabled" name="qq_qr">
+          <NTab v-if="qqQrLoginEnabled || mengkaEnabled" name="qq_qr">
             QQ扫码登录
           </NTab>
           <NTab v-if="captureEnabled" name="capture">
@@ -990,34 +1114,76 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <div v-else-if="activeLoginTab === 'qq_qr'" class="space-y-4" role="tabpanel" aria-label="QQ扫码登录">
-          <BaseInput
-            v-model="form.name"
-            label="账号备注（可留空）"
-            placeholder="留空时使用 QQ 昵称"
-            class="farm-input"
-          />
-          <div class="min-h-64 flex flex-col items-center justify-center gap-3">
-            <div v-if="qqQrUrl" class="bg-white p-2">
-              <img :src="qqQrUrl" alt="QQ登录二维码" class="h-52 w-52">
+          <template v-if="mengkaAvailable">
+            <div v-if="userStore.isAdmin">
+              <BaseSelect
+                v-model="ownerTarget"
+                label="账号归属"
+                :options="ownerSelectOptions"
+              />
+              <p class="mt-1 text-xs opacity-60">
+                新增账号会归属到所选用户，用于账号列表权限隔离
+              </p>
             </div>
-            <div v-else class="h-52 w-52 flex items-center justify-center text-sm opacity-60">
-              {{ qqLoading ? '正在获取二维码...' : '二维码不可用' }}
+            <BaseInput
+              v-model="form.name"
+              label="账号备注（可选）"
+              placeholder="留空时使用 QQ 昵称"
+              class="farm-input"
+            />
+            <div class="rounded-xl p-3 text-sm" style="background: rgba(127, 127, 127, 0.08)">
+              当前机器人节点：{{ mengkaNodeLabel }}
             </div>
-            <p class="text-sm" :style="{ color: 'var(--theme-text)' }">
-              {{ qqStatus }}
+            <div>
+              <p class="mb-1 text-sm opacity-70">
+                萌卡账号已自动识别，选择要授权的账号即可完成农场授权
+              </p>
+              <BaseSelect
+                v-model="mengkaSelectedBot"
+                :options="mengkaBotOptions"
+                placeholder="选择要授权的萌卡账号"
+              />
+            </div>
+            <p v-if="mengkaError" class="text-sm text-red-500">
+              {{ mengkaError }}
             </p>
-            <p v-if="qqError" class="text-sm text-red-500">
-              {{ qqError }}
-            </p>
-          </div>
-          <div class="flex justify-end gap-2">
-            <BaseButton variant="outline" :loading="qqLoading" @click="startQqLogin">
-              刷新二维码
+            <BaseButton variant="primary" block :loading="mengkaLoading" @click="fetchFarmCodeFromMengka">
+              获取农场授权 Code
             </BaseButton>
-            <BaseButton variant="outline" @click="close">
+            <BaseButton variant="outline" block @click="close">
               取消
             </BaseButton>
-          </div>
+          </template>
+          <template v-else>
+            <BaseInput
+              v-model="form.name"
+              label="账号备注（可留空）"
+              placeholder="留空时使用 QQ 昵称"
+              class="farm-input"
+            />
+            <div class="min-h-64 flex flex-col items-center justify-center gap-3">
+              <div v-if="qqQrUrl" class="bg-white p-2">
+                <img :src="qqQrUrl" alt="QQ登录二维码" class="h-52 w-52">
+              </div>
+              <div v-else class="h-52 w-52 flex items-center justify-center text-sm opacity-60">
+                {{ qqLoading ? '正在获取二维码...' : '二维码不可用' }}
+              </div>
+              <p class="text-sm" :style="{ color: 'var(--theme-text)' }">
+                {{ qqStatus }}
+              </p>
+              <p v-if="qqError" class="text-sm text-red-500">
+                {{ qqError }}
+              </p>
+            </div>
+            <div class="flex justify-end gap-2">
+              <BaseButton variant="outline" :loading="qqLoading" @click="startQqLogin">
+                刷新二维码
+              </BaseButton>
+              <BaseButton variant="outline" @click="close">
+                取消
+              </BaseButton>
+            </div>
+          </template>
         </div>
         <div v-else-if="activeLoginTab === 'capture'" class="space-y-4" role="tabpanel" aria-label="抓包登录">
           <BaseInput
