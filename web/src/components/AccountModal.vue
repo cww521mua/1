@@ -187,6 +187,14 @@ function clearQrNameSubmitTimer() {
   }
 }
 
+// 游戏为新建农场号自动生成的初始昵称（教学文案），不适合作为账号备注
+const GAME_PLACEHOLDER_NICK_RE = /创建账号|开启智慧农耕之旅/
+
+function usableNickname(value: string): string {
+  const nick = String(value || '').trim()
+  return nick && !GAME_PLACEHOLDER_NICK_RE.test(nick) ? nick : ''
+}
+
 async function addQrAccount(platform: 'wx' | 'qq', code: string, nickname: string) {
   const name = form.name.trim() || nickname
   if (platform === 'wx')
@@ -350,7 +358,7 @@ async function getWxCodeAndAdd(taskId: string, flowVersion: number) {
   if (!code)
     throw new Error('未获取到登录 Code')
 
-  await addQrAccount('wx', code, nickname)
+  await addQrAccount('wx', code, usableNickname(nickname))
 }
 
 async function confirmWxLogin(taskId: string, flowVersion: number) {
@@ -521,7 +529,7 @@ async function getQqCodeAndAdd(taskId: string, flowVersion: number) {
     const nickname = String(payload?.data?.nickname || '').trim()
     if (!code)
       throw new Error('未获取到登录 Code')
-    await addQrAccount('qq', code, nickname)
+    await addQrAccount('qq', code, usableNickname(nickname))
   }
   catch (error: any) {
     if (isQqFlowActive(taskId, flowVersion))

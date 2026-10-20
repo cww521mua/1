@@ -266,7 +266,9 @@ function createWorkerManager(options: WorkerManagerOptions) {
 
             if (profile.name) {
                 const newNick = String(profile.name).trim();
-                if (newNick && newNick !== '未知' && newNick !== '未登录') {
+                // 游戏为新建农场号自动生成的初始昵称（教学文案）不同步为账号昵称
+                const isPlaceholderNick = /创建账号|开启智慧农耕之旅/.test(newNick);
+                if (newNick && !isPlaceholderNick && newNick !== '未知' && newNick !== '未登录') {
                     if (worker.nick !== newNick) {
                         const oldNick = worker.nick;
                         worker.nick = newNick;
