@@ -13,7 +13,7 @@
 
 抓包流量与游戏协议中都拿不到 QQ 号（只有 code/openid/gid），而游戏 gid 与 QQ 一一对应、且对同一 QQ 跨登录方式保持稳定，因此档案以**账号自身的游戏 gid** 作为 key，作用等同 QQ 号识别：
 
-- 抓包侧：`flow.accountGid`（抓包会话从网关地址中提取的自身 gid）
+- 抓包侧：优先 `flow.accountGid`（抓包会话快照从网关地址提取的自身 gid，**实测常为空**）；为空时由 worker 首次登录上报的自身 gid 补齐
 - 其他登录侧：worker 登录游戏成功后 `getUserState().gid`
 
 ## 链路
@@ -22,15 +22,20 @@
 抓包登录（QQ）完成
   └─ collectQqFriendGids 后台同步完成（capture-routes.ts）
        ├─ store.setKnownFriendGids(accountId, gids)        # 账号自身好友数据（原有逻辑）
-       └─ store.saveQqFriendGidArchive(accountGid, gids)   # 写入本地档案（新增，唯一写入点）
+       ├─ store.savePendingCaptureGids(accountId, gids)    # 无条件内存暂存（30 分钟 TTL），
+       │                                                   # 因会话快照通常拿不到档案 key（自身 gid）
+       └─ flow.accountGid 已知时 saveQqFriendGidArchive    # 快照带自身 gid 时直接写档案
 
 任意方式登录成功（填 Code / QQ 扫码 / 萌卡）
   └─ worker onLoginSuccess（worker.ts）
        └─ sendToMaster({ type: 'friend_gid_seed_check', selfGid, platform: 'qq' })
             └─ master（worker-manager.ts）
                  ├─ 仅 platform=qq 且 selfGid>0
-                 ├─ 账号当前 knownFriendGids 为空时才注入
-                 ├─ store.findQqFriendGidArchive(selfGid) 命中 → setKnownFriendGids
+                 ├─ 消费暂存 takePendingCaptureGids(accountId)
+                 │    └─ 有暂存 → saveQqFriendGidArchive(selfGid, 暂存GID)  # 抓包数据落档（唯一写入点）
+                 ├─ 账号当前 knownFriendGids 为空时才注入：
+                 │    ├─ 优先用本次抓包暂存注入
+                 │    └─ 否则 findQqFriendGidArchive(selfGid) 命中 → 注入档案 GID
                  └─ config_sync 回 worker → 好友任务按注入的 GID 拉取好友列表
 ```
 
@@ -38,10 +43,10 @@
 
 | 位置 | 说明 |
 | --- | --- |
-| `core/src/models/store/qq-friend-gids.ts` | 档案存储：normalize（gid key 校验、GID 去重过滤、按更新时间排序、上限 500 条）、`findQqFriendGidArchive` / `saveQqFriendGidArchive`（合并写入） |
-| `core/src/controllers/admin/capture-routes.ts` | 抓包后台同步完成后按 `flow.accountGid` 存档 |
-| `core/src/core/worker.ts` | `onLoginSuccess` 中 QQ 平台一次性上报 `friend_gid_seed_check` |
-| `core/src/runtime/worker-manager.ts` | `friend_gid_seed_check` 分支：空好友数据时按 gid 查档案注入并 config_sync |
+| `core/src/models/store/qq-friend-gids.ts` | 档案存储：normalize（gid key 校验、GID 去重过滤、按更新时间排序、上限 500 条）、`findQqFriendGidArchive` / `saveQqFriendGidArchive`（合并写入）；内存暂存 `savePendingCaptureGids` / `takePendingCaptureGids`（消费即删、30 分钟 TTL，桥接「抓包完成」与「登录上报自身 gid」两个时机） |
+| `core/src/controllers/admin/capture-routes.ts` | 抓包后台同步完成后无条件暂存本次 GID；快照已带自身 gid 时直写档案 |
+| `core/src/core/worker.ts` | `onLoginSuccess` 中 QQ 平台一次性上报 `friend_gid_seed_check`（带自身 gid） |
+| `core/src/runtime/worker-manager.ts` | `friend_gid_seed_check` 分支：消费暂存落档；空好友数据时优先暂存注入、其次查档案注入并 config_sync |
 
 ## 行为细节
 

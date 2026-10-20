@@ -82,6 +82,8 @@ module.exports = {
     // QQ 好友 GID 本地档案（抓包写入，其他登录方式读取）
     findQqFriendGidArchive: qqFriendGids.findQqFriendGidArchive,
     saveQqFriendGidArchive: qqFriendGids.saveQqFriendGidArchive,
+    savePendingCaptureGids: qqFriendGids.savePendingCaptureGids,
+    takePendingCaptureGids: qqFriendGids.takePendingCaptureGids,
 
     // System config
     getSystemConfig: globalConfig.getSystemConfig,

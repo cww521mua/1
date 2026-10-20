@@ -77,9 +77,37 @@ function saveQqFriendGidArchive(key: unknown, gids: unknown): number[] {
     return merged;
 }
 
+// ============ 抓包暂存（内存） ============
+
+// 抓包会话快照里可能没有账号自身 gid（档案 key），需等 worker 首次登录上报后才可知：
+// 抓包完成时先把本次好友 GID 暂存在内存，由 worker 的 friend_gid_seed_check 消费并写档案。
+const PENDING_TTL_MS = 30 * 60 * 1000;
+const pendingCaptureGids = new Map<string, { gids: number[], capturedAt: number }>();
+
+function savePendingCaptureGids(accountId: unknown, gids: unknown): void {
+    const id = String(accountId || '').trim();
+    const list = (Array.isArray(gids) ? gids : [])
+        .map((item: any) => Number(item))
+        .filter((num: number) => Number.isSafeInteger(num) && num > 0);
+    if (!id || !list.length) return;
+    pendingCaptureGids.set(id, { gids: Array.from(new Set(list)), capturedAt: Date.now() });
+}
+
+/** 取走（消费即删除）指定账号的抓包暂存 GID；过期或不存在返回空数组 */
+function takePendingCaptureGids(accountId: unknown): number[] {
+    const id = String(accountId || '').trim();
+    const entry = pendingCaptureGids.get(id);
+    if (!entry) return [];
+    pendingCaptureGids.delete(id);
+    if (Date.now() - entry.capturedAt > PENDING_TTL_MS) return [];
+    return entry.gids;
+}
+
 module.exports = {
     normalizeQqFriendGidKey,
     normalizeQqFriendGidArchiveData,
     findQqFriendGidArchive,
     saveQqFriendGidArchive,
+    savePendingCaptureGids,
+    takePendingCaptureGids,
 };

@@ -458,26 +458,54 @@ function createWorkerManager(options: WorkerManagerOptions) {
                 friendCount: saved.length,
             });
         } else if (msg.type === 'friend_gid_seed_check') {
-            // 登录后从本地好友档案注入好友 GID：仅 QQ、账号当前无好友数据时生效，
-            // 档案 key 为账号自身游戏 gid，唯一写入来源是抓包登录
+            // 登录后处理好友 GID 种子：仅 QQ 生效。
+            // 抓包会话快照通常拿不到账号自身 gid（档案 key），抓包完成时先内存暂存，
+            // 此处消费暂存并以 worker 上报的自身 gid 落档；账号无好友数据时优先用暂存注入，其次查本地档案
             const selfGid = Number(msg.selfGid) || 0;
             const platform = String(msg.platform || 'qq');
             if (platform === 'qq' && selfGid > 0) {
-                const { getKnownFriendGids, setKnownFriendGids, findQqFriendGidArchive } = require('../models/store');
+                const {
+                    getKnownFriendGids,
+                    setKnownFriendGids,
+                    findQqFriendGidArchive,
+                    saveQqFriendGidArchive,
+                    takePendingCaptureGids,
+                } = require('../models/store');
+                const archiveKey = String(Math.floor(selfGid));
+                const pendingGids: number[] = takePendingCaptureGids(accountId);
+                if (pendingGids.length > 0) {
+                    const archived: number[] = saveQqFriendGidArchive(archiveKey, pendingGids);
+                    log('好友', '本次抓包好友 GID 已写入本地档案', {
+                        accountId: String(accountId),
+                        accountName: worker.name,
+                        archiveKey,
+                        archivedCount: archived.length,
+                    });
+                }
                 const currentKnown: number[] = getKnownFriendGids(accountId) || [];
                 if (currentKnown.length === 0) {
-                    const archive = findQqFriendGidArchive(String(Math.floor(selfGid)));
-                    if (archive && archive.gids.length > 0) {
-                        const seeded: number[] = setKnownFriendGids(accountId, archive.gids);
+                    let seeded: number[] = [];
+                    let seedSource = '';
+                    if (pendingGids.length > 0) {
+                        seeded = setKnownFriendGids(accountId, pendingGids);
+                        seedSource = '本次抓包暂存';
+                    } else {
+                        const archive = findQqFriendGidArchive(archiveKey);
+                        if (archive && archive.gids.length > 0) {
+                            seeded = setKnownFriendGids(accountId, archive.gids);
+                            seedSource = '本地好友档案';
+                        }
+                    }
+                    if (seeded.length > 0) {
                         worker.process.send({
                             type: 'config_sync',
                             config: buildConfigSnapshotForAccount(accountId),
                         });
-                        log('好友', `已从本地好友档案导入 ${seeded.length} 个好友 GID`, {
+                        log('好友', `已从${seedSource}导入 ${seeded.length} 个好友 GID`, {
                             accountId: String(accountId),
                             accountName: worker.name,
                             friendCount: seeded.length,
-                            archiveKey: archive.gid,
+                            archiveKey,
                         });
                     }
                 }

@@ -8,6 +8,8 @@ const {
     normalizeQqFriendGidArchiveData,
     findQqFriendGidArchive,
     saveQqFriendGidArchive,
+    savePendingCaptureGids,
+    takePendingCaptureGids,
 } = require('../dist/models/store/qq-friend-gids');
 
 const { getDataFile } = require('../dist/config/runtime-paths');
@@ -85,4 +87,18 @@ test('saveQqFriendGidArchive 合并写入，find 按 gid 读取；非法输入�
     assert.deepEqual(saveQqFriendGidArchive('900444', []), []);
     assert.equal(findQqFriendGidArchive('900444'), null);
     assert.ok(fs.existsSync(path.dirname(ARCHIVE_FILE)));
+});
+
+test('savePendingCaptureGids 暂存后 takePendingCaptureGids 消费即删', () => {
+    savePendingCaptureGids('acct-pending-1', [11, '12', 12, -3, 0, 'x']);
+    assert.deepEqual(takePendingCaptureGids('acct-pending-1'), [11, 12]);
+    // 消费后即删除，再次读取为空
+    assert.deepEqual(takePendingCaptureGids('acct-pending-1'), []);
+
+    // 非法输入不暂存
+    savePendingCaptureGids('', [1, 2]);
+    savePendingCaptureGids('acct-pending-2', []);
+    savePendingCaptureGids('acct-pending-2', 'oops');
+    assert.deepEqual(takePendingCaptureGids('acct-pending-2'), []);
+    assert.deepEqual(takePendingCaptureGids('acct-not-exists'), []);
 });

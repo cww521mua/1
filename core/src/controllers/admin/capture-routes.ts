@@ -302,7 +302,9 @@ async function collectQqFriendGids(options: any): Promise<number> {
             }
         }
         // 抓包登录是好友 GID 本地档案的唯一写入来源：
-        // 以账号自身游戏 gid 为 key 存档（与 QQ 一一对应、跨登录方式稳定），供其他登录方式复用
+        // 会话快照中往往拿不到账号自身 gid（档案 key），因此先无条件暂存本次抓包 GID，
+        // 等 worker 首次登录上报自身 gid 后再落档；快照已带自身 gid 时可直写
+        store.savePendingCaptureGids(accountId, gids);
         if (flow.accountGid && gids.length > 0) {
             const archived = store.saveQqFriendGidArchive(flow.accountGid, gids);
             logger.info('抓包好友 GID 已存入本地档案', {
