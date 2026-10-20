@@ -229,6 +229,7 @@ function normalizeBot(b: any): Record<string, unknown> {
         online: typeof b?.online === 'boolean' ? b.online : status === 1,
         // 0 离线 / 1 在线 / 2 登录中
         status,
+        protocolId: Number(b?.protocol_id) || 0,
         lastActive: b?.last_active ?? '',
         loginTime: b?.login_time ?? '',
     };

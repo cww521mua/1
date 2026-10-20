@@ -149,7 +149,7 @@ export function useMengkaLogin(options: MengkaLoginOptions = {}) {
     }
   }
 
-  /** 重新登录掉线的萌卡账号（缓存登录或扫码确认），成功后走 onSuccess */
+  /** 重新登录掉线的萌卡账号（可选填密码更新缓存密码；缓存登录或扫码确认），成功后走 onSuccess */
   async function relogin(selfId: string) {
     const target = String(selfId || '').trim()
     if (!target) {
@@ -163,6 +163,7 @@ export function useMengkaLogin(options: MengkaLoginOptions = {}) {
     const version = ++pollVersion
     try {
       const payload: any = { self_id: target }
+      if (password.value) payload.password = password.value
       const owner = options.getOwner?.()
       if (owner) payload.owner = owner
       const { data } = await api.post('/api/mengka/relogin', payload, { timeout: 90000 } as any)

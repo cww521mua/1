@@ -130,6 +130,23 @@ async function ensureAccount(selfId: string, password: string): Promise<boolean>
     return true;
 }
 
+/**
+ * 账号离线且提供了新密码时，更新框架中保存的密码。
+ * 用于修复历史扫码建号时写入的占位密码（掉线后密码登录会报 140022013）。
+ */
+async function syncAccountPassword(selfId: string, password: string): Promise<void> {
+    const bots = await mengka.getBots();
+    const bot = bots.find(item => item.selfId === selfId);
+    if (!bot || bot.online) return;
+    await mengka.callAction('update_account', {
+        self_id: Number(selfId),
+        password,
+        protocol_id: Number(bot.protocolId) || 0,
+        client_type: 'android',
+    }, ADD_ACCOUNT_TIMEOUT_MS);
+    mengkaLogger.info('萌卡账号密码已更新', { selfId });
+}
+
 function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
 
     app.get('/api/settings/mengka-config', (req: Request, res: Response) => {
@@ -254,6 +271,8 @@ function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
 
             try {
                 await ensureAccount(qq, password || `mk-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+                if (password)
+                    await syncAccountPassword(qq, password);
 
                 mengkaLogger.info('发起萌卡 QQ 登录', { qq, owner, hasPassword: !!password });
                 const loginResult = await mengka.callAction('login_account', { self_id: Number(qq) }, LOGIN_TIMEOUT_MS);
@@ -345,7 +364,9 @@ function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
     app.post('/api/mengka/relogin', (req: Request, res: Response) => {
         (async () => {
             if (!ensureMengkaEnabled(res)) return;
-            const selfId = String((req.body || {}).self_id || '').trim();
+            const body = req.body || {};
+            const selfId = String(body.self_id || '').trim();
+            const password = String(body.password || '');
             if (!/^\d{5,12}$/.test(selfId)) {
                 return res.status(400).json({ ok: false, error: '缺少有效的萌卡账号' });
             }
@@ -361,7 +382,9 @@ function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
                 if (!bots.some(item => item.selfId === selfId)) {
                     return res.status(404).json({ ok: false, error: '萌卡框架中不存在该账号' });
                 }
-                mengkaLogger.info('发起萌卡 QQ 重新登录', { selfId });
+                if (password)
+                    await syncAccountPassword(selfId, password);
+                mengkaLogger.info('发起萌卡 QQ 重新登录', { selfId, hasPassword: !!password });
                 const loginResult = await mengka.callAction('login_account', { self_id: Number(selfId) }, LOGIN_TIMEOUT_MS);
                 const code = Number(loginResult?.code);
 
@@ -387,7 +410,7 @@ function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
                 if (code === LOGIN_CODE_WRONG_PASSWORD) {
                     return res.status(400).json({
                         ok: false,
-                        error: '萌卡缓存密码已失效，请解绑后用「扫码登录新 QQ」重新添加',
+                        error: 'QQ 密码错误，请检查后重试；也可解绑后用「扫码登录新 QQ」重新添加',
                         code,
                     });
                 }
