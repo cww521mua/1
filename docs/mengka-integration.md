@@ -70,6 +70,10 @@
 | POST | `/api/mengka/login-qr/start` | 发起 QQ 扫码登录进萌卡（`{qq, password?, owner?}`） |
 | POST | `/api/mengka/login-qr/poll` | 轮询扫码状态，确认后自动写绑定与租约 |
 | POST | `/api/mengka/relogin` | 重新登录掉线的萌卡账号（校验归属；需验证时返回二维码） |
+| GET | `/api/mengka/level/accounts` | 等级任务账号列表（android，按绑定归属过滤；附 QQ 等级） |
+| GET | `/api/mengka/level/panel` | 等级任务面板（payload + 自动执行计划 + 等级资料，`refresh=1` 实时刷新） |
+| POST | `/api/mengka/level/settings` | 保存等级任务自动执行计划（完整替换三项参数） |
+| POST | `/api/mengka/level/execute` | 立即执行选定等级任务（补挂，需非空任务标题数组） |
 
 管理接口（仅超管）：
 
@@ -85,7 +89,8 @@
 | 文件 | 职责 |
 | --- | --- |
 | `core/src/services/mengka-connector.ts` | 萌卡正向 WebSocket 客户端：认证握手、action 调用、自动重连 |
-| `core/src/controllers/admin/mengka-routes.ts` | 状态 / 在线账号 / 取码 / 扫码登录 / 绑定管理 / 配置接口 |
+| `core/src/services/mengka-level-tasks.ts` | 等级任务纯逻辑助手：账号归一化、归属过滤、十分之一天换算 |
+| `core/src/controllers/admin/mengka-routes.ts` | 状态 / 在线账号 / 取码 / 扫码登录 / 绑定管理 / 配置接口 / 等级任务接口 |
 | `core/src/models/store/mengka-bindings.ts` | QQ ↔ 面板用户绑定存储与归属查询 |
 | `core/src/models/store/global-config.ts` | `mengka` 配置归一化与读写 |
 | `core/src/controllers/admin/account-routes.ts` | 管理员添加账号可指定归属用户（`owner`） |
@@ -93,9 +98,23 @@
 | `web/src/composables/useMengkaLogin.ts` | 扫码登录流程复用逻辑（弹窗与管理页共用） |
 | `web/src/components/MengkaLoginPanel.vue` | 萌卡登录流程面板（表单/验证方式/短信/滑块/扫码） |
 | `web/src/views/Settings.vue` | 萌卡对接配置卡片与绑定管理 |
+| `web/src/views/LevelBoost.vue` | 等级加速页：账号选择、加速统计、任务补挂、自动执行计划 |
+
+## 等级加速（QQ 等级任务）
+
+侧边栏「等级加速」页面复用萌卡共享等级任务管理接口（框架 **v2.0.9+**）：
+
+- **账号范围**：仅展示 `get_level_task_accounts` 中 android 平台账号，并按面板绑定归属过滤（普通用户仅本人账号，管理员全量）；
+- **加速概览**：QQ 等级、升级剩余天数、今日活跃（SummaryCard，在线时返回）、今日总加速 / 日常 / 额外 / 会员倍速；`daily_totals_available=false` 或数值为 null 时显示「未知」，不按 0 处理；`is_freeze` 时提示加速已冻结；
+- **任务面板**：日常 / 额外 / 会员 / 会员权益四组任务，展示完成状态、加速值（`speed_days` 十分之一天）、付费标记与最近执行结果；
+- **一键补挂**：勾选未完成且 `can_execute` 的任务后调用 `execute_level_task_selection`，返回 `skippedTasks` 与刷新后面板；账号需在线（免费 48 级 / 会员 16 级以上）；
+- **自动执行计划**：`update_level_task_settings` 完整替换 `selected_tasks / schedule_enabled / schedule_time`（HH:mm），由萌卡框架调度器每日定时执行；
+- **能力校验**：调用前经 `get_plugin_context` 校验 `level_task_management_api_version === 1` 且所需 action 在 `available_actions` 中（60s 缓存），不满足时明确提示升级萌卡框架。
+
 
 ## 注意事项
 
+- 等级加速功能要求萌卡框架 **v2.0.9 及以上**；补挂执行要求账号在线且 QQ 等级满足框架要求（免费 48 级 / 会员 16 级以上），批量执行最长约 5 分钟，请勿关闭页面；
 - `get_qq_farm_code` 仅萌卡 **Android 协议** QQ 支持；Linux 协议账号取码会失败；
 - 扫码登录依赖萌卡 `add_account` / `login_account` / `create_login_qr` 链路：密码验证通过后，QQ 风控可能要求二次验证，面板已支持完整验证状态机——**接收短信验证码**（verify_type 4）、**发送短信**（verify_type 3）、**扫码验证**（verify_type 10）与**滑块验证**（打开滑块页完成后粘贴地址栏链接自动解析提交）；身份验证（140022007）面板暂不代理，请到萌卡 WebUI 完成；
 - 添加 QQ 时可选**登录协议**（手机 / 平板的 Android 协议列表，默认手机 Android 9.2.70）；农场授权仅支持 Android 协议；

@@ -15,6 +15,10 @@ export {};
  * - POST /api/mengka/verify/sms           请求短信验证（4=接收验证码 / 3=发送短信）
  * - POST /api/mengka/verify/check-sms     提交短信验证（通过后自动完成登录）
  * - POST /api/mengka/verify/slider        提交滑块验证结果
+ * - GET  /api/mengka/level/accounts       等级任务账号列表（登录用户，按绑定归属过滤）
+ * - GET  /api/mengka/level/panel          等级任务面板与等级资料（登录用户，校验归属）
+ * - POST /api/mengka/level/settings       保存等级任务自动执行计划（登录用户，校验归属）
+ * - POST /api/mengka/level/execute        立即执行选定等级任务（登录用户，校验归属）
  * - GET  /api/mengka/bindings             绑定列表（仅超管）
  * - DELETE /api/mengka/bindings/:selfId   解绑（绑定本人或超管）
  * - GET  /api/settings/mengka-config      读取对接配置（仅超管，不回显令牌）
@@ -24,6 +28,7 @@ export {};
 const store = require('../../models/store');
 const userStore = require('../../models/user-store');
 const mengka = require('../../services/mengka-connector');
+const { normalizeLevelAccounts, filterLevelAccountsForOwner } = require('../../services/mengka-level-tasks');
 const { getIdentity, isAdminIdentity, handleApiError } = require('./middleware');
 
 const mengkaLogger = require('../../services/logger').createModuleLogger('mengka');
@@ -35,6 +40,9 @@ const QR_CREATE_TIMEOUT_MS = 30000;
 const POLL_TIMEOUT_MS = 20000;
 const LEASE_TIMEOUT_MS = 15000;
 const VERIFY_TIMEOUT_MS = 20000;
+const LEVEL_TIMEOUT_MS = 30000;
+const LEVEL_REFRESH_TIMEOUT_MS = 70000;
+const LEVEL_EXECUTE_TIMEOUT_MS = 290000;
 
 /** 萌卡登录验证返回码（文档：login_account / Bot 登录流程） */
 const LOGIN_CODE_VERIFY = 140022010;
@@ -60,6 +68,32 @@ async function queryVerifyMethods(selfId: string): Promise<{ reasonPrompt: strin
     } catch (e: any) {
         mengkaLogger.warn('查询萌卡安全验证方式失败', { selfId, error: e?.message });
         return null;
+    }
+}
+
+/** 等级任务能力上下文缓存（60s），避免每次请求重复查询插件上下文 */
+let levelContextCache: { checkedAt: number, actions: Set<string> | null } | null = null;
+const LEVEL_CAPABILITY_TTL_MS = 60000;
+
+/**
+ * 等级任务管理接口要求萌卡框架 v2.0.9+：先经 get_plugin_context 校验
+ * level_task_management_api_version 与 available_actions，能力不足时明确提示升级，
+ * 不静默回退。
+ */
+async function ensureLevelAction(action: string): Promise<void> {
+    const now = Date.now();
+    if (!levelContextCache || now - levelContextCache.checkedAt > LEVEL_CAPABILITY_TTL_MS) {
+        let actions: Set<string> | null = null;
+        try {
+            const context = await mengka.callAction('get_plugin_context', {}, VERIFY_TIMEOUT_MS);
+            if (Number(context?.level_task_management_api_version) === 1 && Array.isArray(context?.available_actions)) {
+                actions = new Set(context.available_actions.map((item: any) => String(item)));
+            }
+        } catch { /* 上下文查询失败按能力缺失处理 */ }
+        levelContextCache = { checkedAt: now, actions };
+    }
+    if (!levelContextCache.actions || !levelContextCache.actions.has(action)) {
+        throw new Error('当前萌卡框架不支持等级任务管理（需要 v2.0.9 及以上），请升级萌卡框架');
     }
 }
 
@@ -620,6 +654,156 @@ function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
                 }, LOGIN_TIMEOUT_MS);
                 await respondLoginResult(res, qq, result, owner);
             } catch (e: any) {
+                handleApiError(res, e);
+            }
+        })();
+    });
+
+    /**
+     * 等级操作目标账号归属校验：普通用户仅限本人绑定的账号（管理员放行）。
+     * 与 verify 不同：等级任务要求账号必须已建立绑定。
+     */
+    function ensureLevelAccessible(req: Request, res: Response, selfId: string): boolean {
+        const identity = getIdentity(ctx, req);
+        if (isAdminIdentity(identity)) return true;
+        const binding = store.findMengkaBinding(selfId);
+        if (!binding || binding.owner !== identity.username) {
+            res.status(403).json({ ok: false, error: '无权操作该萌卡账号' });
+            return false;
+        }
+        return true;
+    }
+
+    // 等级任务账号列表（get_level_task_accounts 返回框架全部账号，必须面板侧按归属过滤）
+    app.get('/api/mengka/level/accounts', (req: Request, res: Response) => {
+        (async () => {
+            if (!ensureMengkaEnabled(res)) return;
+            try {
+                await ensureLevelAction('get_level_task_accounts');
+                const raw = await mengka.callAction('get_level_task_accounts', {}, LEVEL_TIMEOUT_MS);
+                const all = normalizeLevelAccounts(raw);
+                const identity = getIdentity(ctx, req);
+                const isAdmin = isAdminIdentity(identity);
+                const ownerMap = new Map(store.getMengkaBindings().map(item => [item.selfId, item.owner]));
+                const accounts = filterLevelAccountsForOwner(all, ownerMap, isAdmin, identity.username)
+                    .map(item => ({ ...item, online: item.status === 1, owner: ownerMap.get(item.selfId) || null }));
+                res.json({ ok: true, data: { accounts } });
+            } catch (e: any) {
+                mengkaLogger.warn('获取萌卡等级任务账号失败', { error: e?.message });
+                handleApiError(res, e);
+            }
+        })();
+    });
+
+    // 等级任务面板（payload + settings）与账号等级资料（profile 失败不阻塞面板）
+    app.get('/api/mengka/level/panel', (req: Request, res: Response) => {
+        (async () => {
+            if (!ensureMengkaEnabled(res)) return;
+            const selfId = String(req.query.selfId || '').trim();
+            if (!/^\d{5,12}$/.test(selfId)) {
+                return res.status(400).json({ ok: false, error: '缺少有效的萌卡账号' });
+            }
+            if (!ensureLevelAccessible(req, res, selfId)) return;
+            try {
+                await ensureLevelAction('get_level_task_panel');
+                const refresh = String(req.query.refresh || '') === '1';
+                const [panel, profile] = await Promise.all([
+                    mengka.callAction('get_level_task_panel', {
+                        self_id: Number(selfId),
+                        client_type: 'android',
+                        refresh,
+                    }, refresh ? LEVEL_REFRESH_TIMEOUT_MS : LEVEL_TIMEOUT_MS),
+                    mengka.callAction('get_level_task_account', {
+                        self_id: Number(selfId),
+                        client_type: 'android',
+                    }, LEVEL_TIMEOUT_MS).catch(() => null),
+                ]);
+                res.json({
+                    ok: true,
+                    data: { payload: panel?.payload ?? null, settings: panel?.settings ?? null, profile },
+                });
+            } catch (e: any) {
+                mengkaLogger.warn('获取萌卡等级任务面板失败', { selfId, error: e?.message });
+                handleApiError(res, e);
+            }
+        })();
+    });
+
+    // 保存自动执行计划（完整替换：selected_tasks / schedule_enabled / schedule_time）
+    app.post('/api/mengka/level/settings', (req: Request, res: Response) => {
+        (async () => {
+            if (!ensureMengkaEnabled(res)) return;
+            const body = req.body || {};
+            const selfId = String(body.selfId || '').trim();
+            const selectedTasks = Array.isArray(body.selectedTasks) ? body.selectedTasks : null;
+            const scheduleTime = String(body.scheduleTime || '').trim();
+            if (!/^\d{5,12}$/.test(selfId)
+                || !selectedTasks
+                || selectedTasks.some((item: any) => typeof item !== 'string')
+                || selectedTasks.length > 100
+                || typeof body.scheduleEnabled !== 'boolean'
+                || !/^([01]\d|2[0-3]):[0-5]\d$/.test(scheduleTime)) {
+                return res.status(400).json({ ok: false, error: '计划参数不完整（任务列表、开关与 HH:mm 时间必填）' });
+            }
+            if (!ensureLevelAccessible(req, res, selfId)) return;
+            try {
+                await ensureLevelAction('update_level_task_settings');
+                const tasks = Array.from(new Set(selectedTasks.map((item: string) => item.trim()).filter(Boolean)));
+                const saved = await mengka.callAction('update_level_task_settings', {
+                    self_id: Number(selfId),
+                    client_type: 'android',
+                    selected_tasks: tasks,
+                    schedule_enabled: body.scheduleEnabled,
+                    schedule_time: scheduleTime,
+                }, LEVEL_TIMEOUT_MS);
+                mengkaLogger.info('萌卡等级任务计划已保存', { selfId, count: tasks.length, scheduleEnabled: body.scheduleEnabled, scheduleTime });
+                res.json({ ok: true, data: { settings: saved } });
+            } catch (e: any) {
+                mengkaLogger.warn('萌卡等级任务计划保存失败', { selfId, error: e?.message });
+                handleApiError(res, e);
+            }
+        })();
+    });
+
+    // 立即执行选定任务（补挂；账号需在线，整次预算约 5 分钟）
+    app.post('/api/mengka/level/execute', (req: Request, res: Response) => {
+        (async () => {
+            if (!ensureMengkaEnabled(res)) return;
+            const body = req.body || {};
+            const selfId = String(body.selfId || '').trim();
+            const tasks = Array.isArray(body.tasks)
+                ? body.tasks.filter((item: any) => typeof item === 'string' && item.trim())
+                : [];
+            if (!/^\d{5,12}$/.test(selfId) || !tasks.length) {
+                return res.status(400).json({ ok: false, error: '请选择要执行的等级任务' });
+            }
+            if (!ensureLevelAccessible(req, res, selfId)) return;
+            try {
+                await ensureLevelAction('execute_level_task_selection');
+                mengkaLogger.info('执行萌卡等级任务', { selfId, tasks });
+                const result = await mengka.callAction('execute_level_task_selection', {
+                    self_id: Number(selfId),
+                    client_type: 'android',
+                    tasks,
+                }, LEVEL_EXECUTE_TIMEOUT_MS);
+                mengkaLogger.info('萌卡等级任务执行完成', {
+                    selfId,
+                    executed: result?.tasks,
+                    skipped: result?.skippedTasks,
+                    refreshed: !!result?.refreshed,
+                });
+                res.json({
+                    ok: true,
+                    data: {
+                        executed: Array.isArray(result?.tasks) ? result.tasks : [],
+                        skippedTasks: Array.isArray(result?.skippedTasks) ? result.skippedTasks : [],
+                        payload: result?.payload ?? null,
+                        refreshed: !!result?.refreshed,
+                        refreshError: String(result?.refreshError || ''),
+                    },
+                });
+            } catch (e: any) {
+                mengkaLogger.warn('萌卡等级任务执行失败', { selfId, error: e?.message });
                 handleApiError(res, e);
             }
         })();

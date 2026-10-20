@@ -60,6 +60,13 @@ export const menuRoutes: MenuItem[] = [
     component: () => import('@/views/GameMall.vue'),
   },
   {
+    path: 'level-boost',
+    name: 'level-boost',
+    label: '等级加速',
+    icon: 'i-carbon-flash',
+    component: () => import('@/views/LevelBoost.vue'),
+  },
+  {
     path: 'settings',
     name: 'Settings',
     label: '设置',
