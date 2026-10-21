@@ -23,7 +23,7 @@ const {
 const adminLogger = createModuleLogger('admin');
 
 // 公开接口（无需登录）
-const PUBLIC_API_PATHS = new Set(['/login', '/register', '/register/referral', '/register/referral-info', '/branding', '/branding/icon', '/game-version']);
+const PUBLIC_API_PATHS = new Set(['/login', '/register', '/register/referral', '/register/referral-info', '/branding', '/branding/icon', '/home-page', '/game-version']);
 
 function issueIdentityToken(ctx: AdminContext, username: string, role: 'admin' | 'user'): string {
     const token = issueToken();
@@ -165,6 +165,11 @@ function mountAuthRoutes(app: Application, ctx: AdminContext): void {
     // 登录页品牌配置（公开接口：登录页未登录也需要读取）
     app.get('/api/branding', (_req: Request, res: Response) => {
         res.json({ ok: true, data: store.getBrand() });
+    });
+
+    // 官网主页配置（公开接口：主页 / 未登录也需要读取）
+    app.get('/api/home-page', (_req: Request, res: Response) => {
+        res.json({ ok: true, data: store.getHomePage() });
     });
 
     // 品牌图标文件（公开：登录页与侧边栏都需要展示）

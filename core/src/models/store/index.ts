@@ -5,6 +5,7 @@ const accountConfig = require('./account-config');
 const accounts = require('./accounts');
 const brandIcon = require('./brand-icon');
 const mengkaBindings = require('./mengka-bindings');
+const homePage = require('./home-page');
 const qqFriendGids = require('./qq-friend-gids');
 
 module.exports = {
@@ -78,6 +79,10 @@ module.exports = {
     findMengkaBindingsByOwner: mengkaBindings.findMengkaBindingsByOwner,
     upsertMengkaBinding: mengkaBindings.upsertMengkaBinding,
     deleteMengkaBinding: mengkaBindings.deleteMengkaBinding,
+
+    // 官网主页配置（/ 主页的文字与功能图标）
+    getHomePage: homePage.getHomePage,
+    setHomePage: homePage.setHomePage,
 
     // QQ 好友 GID 本地档案（抓包写入，其他登录方式读取）
     findQqFriendGidArchive: qqFriendGids.findQqFriendGidArchive,

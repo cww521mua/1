@@ -12,6 +12,7 @@ import EmptyState from '@/components/ui/EmptyState.vue'
 import AutomationSettingsForm from '@/components/settings/AutomationSettingsForm.vue'
 import BagSeedPriorityItem from '@/components/settings/BagSeedPriorityItem.vue'
 import CardKeyPanel from '@/components/settings/CardKeyPanel.vue'
+import HomePageSettings from '@/components/settings/HomePageSettings.vue'
 import UserAccountPanel from '@/components/settings/UserAccountPanel.vue'
 import UsersPanel from '@/components/settings/UsersPanel.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
@@ -40,9 +41,9 @@ const brandStore = useBrandStore()
 const settingStore = useSettingStore()
 const statusStore = useStatusStore()
 
-type SettingsTab = 'account' | 'strategy' | 'automation' | 'system' | 'cards' | 'users' | 'profile'
+type SettingsTab = 'account' | 'strategy' | 'automation' | 'system' | 'home' | 'cards' | 'users' | 'profile'
 const { isAdmin } = storeToRefs(userStore)
-const adminTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'system', 'cards', 'users']
+const adminTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'system', 'home', 'cards', 'users']
 const userTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'profile']
 const settingsTabKeys: SettingsTab[] = isAdmin.value ? adminTabKeys : userTabKeys
 const storedTab = localStorage.getItem('settings-active-tab')
@@ -74,6 +75,7 @@ const adminTabs = [
   { key: 'strategy', label: '策略设置', icon: 'i-carbon-settings-adjust' },
   { key: 'automation', label: '自动控制', icon: 'i-carbon-settings-adjust' },
   { key: 'system', label: '系统设置', icon: 'i-carbon-settings' },
+  { key: 'home', label: '主页设置', icon: 'i-carbon-home' },
   { key: 'cards', label: '卡密', icon: 'i-carbon-ticket' },
   { key: 'users', label: '用户', icon: 'i-carbon-user-multiple' },
 ] as const
@@ -2258,6 +2260,7 @@ async function handleResetSystemConfig() {
 
         <!-- 用户管理 -->
         <UsersPanel v-else-if="activeTab === 'users'" />
+        <HomePageSettings v-else-if="activeTab === 'home'" />
 
         <!-- 账户中心（普通用户） -->
         <UserAccountPanel v-else-if="activeTab === 'profile'" />

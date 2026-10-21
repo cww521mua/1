@@ -11,7 +11,7 @@ export interface MenuItem {
 
 export const menuRoutes: MenuItem[] = [
   {
-    path: '',
+    path: 'dashboard',
     name: 'dashboard',
     label: '概览',
     icon: 'i-carbon-dashboard',

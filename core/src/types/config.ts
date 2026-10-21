@@ -140,6 +140,45 @@ export interface MengkaConfig {
   token: string;
 }
 
+export interface HomeFeature {
+  /** 功能图标 key；前端按 home-icons 常量映射，未知 key 回退默认图标 */
+  icon: string;
+  title: string;
+  desc: string;
+}
+
+export interface HomeStep {
+  title: string;
+  desc: string;
+}
+
+export interface HomePageConfig {
+  /** 顶部导航品牌名；留空回退品牌设置主标题 */
+  brandName: string;
+  hero: {
+    /** 首屏顶部小标签 */
+    kicker: string;
+    /** 主标题第一行 */
+    title1: string;
+    /** 主标题第二行 */
+    title2: string;
+    /** 第二行中绿色高亮的词；留空不高亮 */
+    highlight: string;
+    description: string;
+    primaryText: string;
+    secondaryText: string;
+    chips: string[];
+  };
+  featuresTitle: string;
+  featuresSubtitle: string;
+  features: HomeFeature[];
+  stepsTitle: string;
+  stepsSubtitle: string;
+  steps: HomeStep[];
+  cta: { title: string; subtitle: string; primaryText: string; secondaryText: string };
+  footerNote: string;
+}
+
 export interface UIConfig {
   theme: 'light' | 'dark';
 }

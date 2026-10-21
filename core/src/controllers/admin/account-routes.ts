@@ -563,6 +563,17 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         }
     });
 
+    // API: 保存官网主页配置（管理员专属）
+    app.post('/api/settings/home-page', (req: Request, res: Response) => {
+        if (!requireAdminRole(ctx, req, res)) return;
+        try {
+            const saved = store.setHomePage(req.body || {});
+            res.json({ ok: true, data: saved });
+        } catch (e: any) {
+            handleApiError(res, e);
+        }
+    });
+
     // API: 上传品牌图标（管理员专属，JSON body: { data: dataURL }）
     app.post('/api/settings/branding/icon', (req: Request, res: Response) => {
         if (!requireAdminRole(ctx, req, res)) return;

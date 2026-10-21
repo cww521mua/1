@@ -41,6 +41,12 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     {
+      // 官网主页（公开访问，无需登录）
+      path: '/',
+      name: 'home',
+      component: () => import('@/views/Home.vue'),
+    },
+    {
       path: '/',
       component: () => import('@/layouts/DefaultLayout.vue'),
       children: menuRoutes.map(route => ({
@@ -70,6 +76,10 @@ const router = createRouter({
 
 router.beforeEach(async (to, _from) => {
   NProgress.start()
+
+  // 主页为公开页面：无论是否登录都直接放行
+  if (to.name === 'home')
+    return true
 
   if (to.name === 'login') {
     if (!adminToken.value) {
