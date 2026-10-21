@@ -96,14 +96,15 @@ router.beforeEach(async (to, _from) => {
 
   if (!adminToken.value) {
     validatedToken = ''
-    return { name: 'login' }
+    // 未登录访问功能页：回官网主页并自动弹出登录框
+    return { name: 'home', query: { auth: 'login' } }
   }
 
   const valid = await ensureTokenValid()
   if (!valid) {
     adminToken.value = ''
     validatedToken = ''
-    return { name: 'login' }
+    return { name: 'home', query: { auth: 'login' } }
   }
 
   return true

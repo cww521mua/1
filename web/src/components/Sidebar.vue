@@ -292,7 +292,8 @@ watch(isSidebarCollapsed, closeFlyouts)
 
 async function handleLogout() {
   await userStore.logout()
-  router.push('/login')
+  // 退出登录后退回官网主页
+  router.push('/')
 }
 </script>
 

@@ -8,11 +8,17 @@ import BrandMark from '@/components/ui/BrandMark.vue'
 import { useBrandStore } from '@/stores/brand'
 import { useUserStore } from '@/stores/user'
 
+// embedded: 在主页登录弹窗内使用（去掉整页背景与滚动，仅渲染玻璃卡片）
+const props = defineProps<{
+  embedded?: boolean
+  initialMode?: 'login' | 'register'
+}>()
+
 const userStore = useUserStore()
 const brandStore = useBrandStore()
 const brand = computed(() => brandStore.brand)
 const route = useRoute()
-const mode = ref<'login' | 'register'>('login')
+const mode = ref<'login' | 'register'>(props.initialMode === 'register' ? 'register' : 'login')
 const registerVia = ref<'card' | 'referral'>('card')
 const refInfo = ref<{ username: string, isAgent: boolean } | null>(null)
 const refInput = ref('')
@@ -220,7 +226,8 @@ async function handleSubmit() {
       if (result.data?.mustChangePassword)
         success.value = '登录成功，请修改默认密码'
       setTimeout(() => {
-        window.location.href = '/'
+        // 登录成功直接进入面板（概览页）
+        window.location.href = '/dashboard'
       }, 500)
     }
     else if (result.errorType === 'rate_limit') {
@@ -265,7 +272,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="login-container">
+  <main class="login-container" :class="{ embedded: props.embedded }">
     <section class="login-card">
       <header class="logo-area">
         <img v-if="brand.icon" :src="brand.icon" alt="logo" class="logo-icon logo-icon-img">
@@ -445,6 +452,26 @@ onMounted(() => {
     linear-gradient(rgba(67, 141, 99, 0.045) 1px, transparent 1px),
     linear-gradient(90deg, rgba(67, 141, 99, 0.045) 1px, transparent 1px);
   background-size: 42px 42px;
+}
+
+/* 弹窗内嵌模式：仅保留玻璃卡片本身 */
+.login-container.embedded {
+  height: auto;
+  max-height: min(78dvh, 720px);
+  padding: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: none;
+}
+
+.login-container.embedded::before {
+  display: none;
+}
+
+.login-container.embedded .login-card {
+  width: 100%;
+  margin: 0 auto;
+  background: color-mix(in srgb, var(--ui-bg) 90%, transparent);
 }
 
 .login-container::before {

@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import axios from 'axios'
+import { NModal } from 'naive-ui/es/modal'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useStorage } from '@vueuse/core'
 import { getHomeIcon } from '@/constants/home-icons'
+import Login from '@/views/Login.vue'
 
 interface HomeFeature { icon: string, title: string, desc: string }
 interface HomeStep { title: string, desc: string }
@@ -61,17 +64,18 @@ const isLoggedIn = computed(() => !!String(adminToken.value || '').trim())
 
 const navBrandName = computed(() => cfg.value.brandName || brandTitle.value || FALLBACK.brandName)
 
-const heroPrimary = computed(() => (isLoggedIn.value
-  ? { text: '进入面板', to: '/dashboard' }
-  : { text: cfg.value.hero.primaryText || '立即注册', to: '/register' }))
+// 登录/注册弹窗：主页内完成登录，成功后跳转 /dashboard（Login.vue 处理）
+const route = useRoute()
+const router = useRouter()
+const authModal = ref<'login' | 'register' | null>(null)
 
-const ctaPrimary = computed(() => (isLoggedIn.value
-  ? { text: '进入面板', to: '/dashboard' }
-  : { text: cfg.value.cta.primaryText || '立即注册', to: '/register' }))
+function openAuth(mode: 'login' | 'register') {
+  authModal.value = mode
+}
 
-const ctaSecondary = computed(() => (isLoggedIn.value
-  ? { text: cfg.value.cta.secondaryText || '登录面板', to: '/login' }
-  : { text: cfg.value.cta.secondaryText || '登录面板', to: '/login' }))
+function closeAuth() {
+  authModal.value = null
+}
 
 const highlightParts = computed(() => {
   const title2 = cfg.value.hero.title2 || ''
@@ -93,6 +97,12 @@ function scrollToFeatures() {
 }
 
 onMounted(async () => {
+  // 未登录被重定向回主页时（/dashboard 等 → /?auth=login），自动弹出登录框
+  if (String(route.query.auth || '') === 'login' && !isLoggedIn.value) {
+    authModal.value = 'login'
+    router.replace({ query: { ...route.query, auth: undefined } })
+  }
+
   const requests: Promise<any>[] = [
     axios.get('/api/home-page', { timeout: 8000 }).then((res) => {
       const data = res.data && res.data.data
@@ -144,8 +154,8 @@ onBeforeUnmount(() => {
         </a>
         <div class="nav-actions">
           <template v-if="!isLoggedIn">
-            <RouterLink class="btn btn-ghost" to="/login">登录</RouterLink>
-            <RouterLink class="btn btn-primary" to="/register">立即注册</RouterLink>
+            <button class="btn btn-ghost" @click="openAuth('login')">登录</button>
+            <button class="btn btn-primary" @click="openAuth('register')">立即注册</button>
           </template>
           <RouterLink v-else class="btn btn-primary" to="/dashboard">进入面板</RouterLink>
         </div>
@@ -160,7 +170,10 @@ onBeforeUnmount(() => {
           <h1>{{ cfg.hero.title1 }}<br>{{ highlightParts.before }}<em v-if="highlightParts.mark">{{ highlightParts.mark }}</em>{{ highlightParts.after }}</h1>
           <p>{{ cfg.hero.description }}</p>
           <div class="hero-cta">
-            <RouterLink class="btn btn-primary btn-lg" :to="heroPrimary.to">{{ heroPrimary.text }}</RouterLink>
+            <button v-if="!isLoggedIn" class="btn btn-primary btn-lg" @click="openAuth('register')">
+              {{ cfg.hero.primaryText || '立即注册' }}
+            </button>
+            <RouterLink v-else class="btn btn-primary btn-lg" to="/dashboard">进入面板</RouterLink>
             <button class="btn btn-ghost btn-lg" @click="scrollToFeatures">{{ cfg.hero.secondaryText }}</button>
           </div>
           <div class="hero-chips">
@@ -270,8 +283,11 @@ onBeforeUnmount(() => {
           <h2>{{ cfg.cta.title }}</h2>
           <p>{{ cfg.cta.subtitle }}</p>
           <div class="hero-cta">
-            <RouterLink class="btn btn-primary btn-lg" :to="ctaPrimary.to">{{ ctaPrimary.text }}</RouterLink>
-            <RouterLink class="btn btn-ghost btn-lg" :to="ctaSecondary.to">{{ ctaSecondary.text }}</RouterLink>
+            <button v-if="!isLoggedIn" class="btn btn-primary btn-lg" @click="openAuth('register')">
+              {{ cfg.cta.primaryText || '立即注册' }}
+            </button>
+            <RouterLink v-else class="btn btn-primary btn-lg" to="/dashboard">进入面板</RouterLink>
+            <button class="btn btn-ghost btn-lg" @click="openAuth('login')">{{ cfg.cta.secondaryText || '登录面板' }}</button>
           </div>
         </div>
       </div>
@@ -285,8 +301,8 @@ onBeforeUnmount(() => {
         </div>
         <div class="foot-links">
           <template v-if="!isLoggedIn">
-            <RouterLink to="/login">登录</RouterLink>
-            <RouterLink to="/register">注册</RouterLink>
+            <a href="#" @click.prevent="openAuth('login')">登录</a>
+            <a href="#" @click.prevent="openAuth('register')">注册</a>
           </template>
           <RouterLink v-else to="/dashboard">进入面板</RouterLink>
           <a href="#features" @click.prevent="scrollToFeatures">功能</a>
@@ -294,6 +310,20 @@ onBeforeUnmount(() => {
         <p class="foot-note">{{ cfg.footerNote }}</p>
       </div>
     </footer>
+
+    <!-- 登录 / 注册弹窗 -->
+    <NModal
+      :show="!!authModal"
+      :mask-closable="true"
+      @update:show="value => !value && closeAuth()"
+    >
+      <div class="auth-modal">
+        <button class="auth-close" aria-label="关闭" @click="closeAuth">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M3.7 2.3 8 6.6l4.3-4.3 1.4 1.4L9.4 8l4.3 4.3-1.4 1.4L8 9.4l-4.3 4.3-1.4-1.4L6.6 8 2.3 3.7z" /></svg>
+        </button>
+        <Login v-if="authModal" :key="authModal" embedded :initial-mode="authModal" />
+      </div>
+    </NModal>
   </div>
 </template>
 
@@ -665,6 +695,32 @@ footer { padding: 48px 0 40px; }
   font-size: 12px;
   line-height: 1.7;
 }
+
+/* ---------- 登录 / 注册弹窗 ---------- */
+.auth-modal {
+  position: relative;
+  width: min(478px, 92vw);
+  padding: 6px;
+  border-radius: 20px;
+}
+.auth-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--ui-border);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ui-surface-strong) 85%, transparent);
+  color: var(--ui-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.auth-close:hover { color: var(--ui-ink); border-color: var(--ui-border-strong); }
+.auth-close svg { width: 13px; height: 13px; }
 
 /* ---------- 入场动画 ---------- */
 .reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.22, 1, 0.36, 1); }

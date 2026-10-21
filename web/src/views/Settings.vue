@@ -1271,7 +1271,7 @@ async function handleChangePassword() {
       passwordForm.value = { old: '', new: '', confirm: '' }
       setTimeout(() => {
         userStore.logout()
-        window.location.href = '/login'
+        window.location.href = '/'
       }, 1500)
     }
     else {
