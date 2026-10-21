@@ -149,6 +149,24 @@ async function bindAccountToOwner(selfId: string, owner: string, nickname: strin
     }
 }
 
+/**
+ * 登录发起前预写授权租约：框架在 WebUI 新增账号时会自动建立插件授权档案且默认停用，
+ * 直接发起登录会被「插件授权已到期或被停用」拒绝（而面板的正式租约要登录成功后才写，形成死锁）。
+ * 此处先开启授权打破循环；失败仅告警不阻塞登录。
+ */
+async function ensureAccountAccessLease(selfId: string, owner: string): Promise<void> {
+    try {
+        await mengka.callAction('set_account_access', {
+            self_id: Number(selfId),
+            client_type: 'android',
+            owner_id: owner,
+            enabled: true,
+        }, LEASE_TIMEOUT_MS);
+    } catch (e: any) {
+        mengkaLogger.warn('预写萌卡授权租约失败（继续登录）', { selfId, error: e?.message });
+    }
+}
+
 async function getBotNickname(selfId: string): Promise<string> {
     try {
         const bots = await mengka.getBots();
@@ -400,6 +418,7 @@ function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
                 await ensureAccount(qq, password || `mk-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`, protocolId);
                 if (password)
                     await syncAccountPassword(qq, password);
+                await ensureAccountAccessLease(qq, owner);
 
                 mengkaLogger.info('发起萌卡 QQ 登录', { qq, owner, hasPassword: !!password, protocolId });
                 const loginResult = await mengka.callAction('login_account', { self_id: Number(qq) }, LOGIN_TIMEOUT_MS);
@@ -481,6 +500,8 @@ function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
                 }
                 if (password)
                     await syncAccountPassword(selfId, password);
+                const bindingForLease = store.findMengkaBinding(selfId);
+                await ensureAccountAccessLease(selfId, bindingForLease?.owner || identity.username);
                 mengkaLogger.info('发起萌卡 QQ 重新登录', { selfId, hasPassword: !!password });
                 const loginResult = await mengka.callAction('login_account', { self_id: Number(selfId) }, LOGIN_TIMEOUT_MS);
                 const owner = resolveBindingOwner(ctx, req, res);
