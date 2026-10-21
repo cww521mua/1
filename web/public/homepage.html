@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>QQ 农场挂机面板 · 多账号自动化托管</title>
+<meta name="description" content="基于 Web 面板的 QQ 农场自动化工具：多账号独立策略、全自动种收偷菜、好友互动、图鉴收集、活动中心、等级加速与收益分析。">
+<link rel="icon" href="/icon.png">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f3f5ef;
+  --bg-soft: #eef2eb;
+  --surface: rgba(255, 255, 255, 0.86);
+  --surface-strong: rgba(255, 255, 255, 0.92);
+  --border: rgba(58, 86, 68, 0.1);
+  --border-strong: rgba(58, 86, 68, 0.2);
+  --ink: #243028;
+  --muted: #6d776f;
+  --subtle: #929b94;
+  --primary: #438d63;
+  --primary-soft: #e4f1e7;
+  --teal: #5ba495;
+  --teal-soft: #e6f2f0;
+  --warning: #c58b3f;
+  --warning-soft: #fbf2e3;
+  --danger: #c95f66;
+  --danger-soft: #fae9ea;
+  --violet: #8f79bc;
+  --violet-soft: #f0edf8;
+  --blue: #5c8fa8;
+  --blue-soft: #eaf2f5;
+  --glow: rgba(214, 236, 214, 0.75);
+  --glow-2: rgba(222, 236, 240, 0.6);
+  --chrome-bg: color-mix(in srgb, #f3f5ef 96%, transparent);
+  --radius-control: 10px;
+  --radius-card: 14px;
+  --shadow-sm: 0 1px 2px rgba(45, 66, 52, 0.04), 0 6px 20px rgba(45, 66, 52, 0.05);
+  --shadow-md: 0 12px 32px rgba(55, 75, 61, 0.1);
+  --shadow-lg: 0 24px 64px rgba(55, 75, 61, 0.15);
+  --highlight: rgba(255, 255, 255, 0.9);
+  --font: Inter, "Microsoft YaHei", "PingFang SC", ui-sans-serif, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--ink);
+  background:
+    radial-gradient(1100px 520px at 0% 0%, var(--glow), transparent 70%),
+    radial-gradient(900px 480px at 100% 100%, var(--glow-2), transparent 70%),
+    var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+a { color: inherit; text-decoration: none; }
+
+button:focus-visible, a:focus-visible {
+  outline: 3px solid rgba(67, 141, 99, 0.2);
+  outline-offset: 2px;
+}
+
+/* ---------- 顶部导航：右上角登录 / 注册 ---------- */
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+.nav.is-scrolled {
+  background: var(--chrome-bg);
+  box-shadow: 0 1px 0 var(--border);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+}
+.nav-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 14px 22px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-right: auto;
+}
+.brand-mark {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  filter: drop-shadow(0 6px 14px rgba(45, 122, 83, 0.24));
+}
+.brand-name {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.brand-tag {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: 1.5px;
+}
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---------- 按钮 ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:active { transform: translateY(1px); }
+.btn-primary {
+  color: #fff;
+  background: var(--primary);
+  box-shadow: 0 8px 20px rgba(67, 141, 99, 0.32);
+}
+.btn-primary:hover { background: color-mix(in srgb, var(--primary) 88%, #000); }
+.btn-ghost {
+  color: var(--ink);
+  background: var(--surface-strong);
+  border-color: var(--border);
+  box-shadow: inset 0 1px 0 var(--highlight), var(--shadow-sm);
+}
+.btn-ghost:hover { border-color: var(--border-strong); }
+.btn-lg { height: 46px; padding: 0 26px; font-size: 15px; }
+
+/* ---------- 通用布局 ---------- */
+.wrap {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 22px;
+}
+
+section { padding: 72px 0; }
+
+.kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+.kicker::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 3px rgba(67, 141, 99, 0.18);
+}
+
+.sec-head { text-align: center; max-width: 640px; margin: 0 auto 42px; }
+.sec-head h2 {
+  margin: 14px 0 10px;
+  font-size: clamp(24px, 3.4vw, 32px);
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+.sec-head p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.7; }
+
+/* ---------- Hero ---------- */
+.hero {
+  position: relative;
+  padding: 128px 0 76px;
+  background-image:
+    linear-gradient(rgba(67, 141, 99, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(67, 141, 99, 0.045) 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 64px 6% 24px;
+  border: 1px solid rgba(67, 141, 99, 0.08);
+  border-radius: 36px;
+  background: color-mix(in srgb, var(--surface-strong) 22%, transparent);
+  pointer-events: none;
+}
+.hero-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 48px;
+  align-items: center;
+}
+.hero-copy h1 {
+  margin: 18px 0 16px;
+  font-size: clamp(30px, 4.6vw, 46px);
+  line-height: 1.22;
+  letter-spacing: 0;
+}
+.hero-copy h1 em {
+  font-style: normal;
+  color: var(--primary);
+  position: relative;
+}
+.hero-copy > p {
+  margin: 0 0 26px;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.8;
+  max-width: 480px;
+}
+.hero-cta { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 30px; }
+.hero-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-strong) 66%, transparent);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.chip svg { width: 13px; height: 13px; color: var(--primary); }
+
+/* Hero 右侧：面板玻璃模拟卡片 */
+.hero-visual { position: relative; }
+.panel-card {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  box-shadow: 0 28px 76px rgba(55, 75, 61, 0.16), inset 0 1px 0 var(--highlight);
+  -webkit-backdrop-filter: blur(24px) saturate(135%);
+  backdrop-filter: blur(24px) saturate(135%);
+  padding: 18px;
+}
+.panel-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.panel-dot { width: 9px; height: 9px; border-radius: 50%; }
+.panel-dot:nth-child(1) { background: #dcd6c3; }
+.panel-dot:nth-child(2) { background: #cfe3d4; }
+.panel-dot:nth-child(3) { background: #bcd9c6; }
+.panel-top span {
+  margin-left: 6px;
+  color: var(--subtle);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+.panel-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 4px;
+  border-bottom: 1px dashed var(--border);
+}
+.panel-row:last-child { border-bottom: 0; }
+.panel-ico {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 10px;
+}
+.panel-ico svg { width: 17px; height: 17px; }
+.panel-meta { flex: 1; min-width: 0; }
+.panel-meta b { display: block; font-size: 13px; font-weight: 650; }
+.panel-meta small { color: var(--subtle); font-size: 11.5px; }
+.panel-badge {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.bar {
+  margin-top: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(58, 86, 68, 0.08);
+  overflow: hidden;
+}
+.bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+  animation: bar-grow 1.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes bar-grow { from { width: 0; } }
+
+.float-leaf {
+  position: absolute;
+  z-index: -1;
+  animation: sway 5s ease-in-out infinite;
+}
+@keyframes sway {
+  0%, 100% { transform: rotate(-4deg) translateY(0); }
+  50% { transform: rotate(4deg) translateY(-8px); }
+}
+
+/* ---------- 功能区 ---------- */
+.feat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.feat {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 var(--highlight), var(--shadow-sm);
+  padding: 22px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.feat:hover {
+  transform: translateY(-3px);
+  box-shadow: inset 0 1px 0 var(--highlight), var(--shadow-md);
+  border-color: var(--border-strong);
+}
+.feat-ico {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+}
+.feat-ico svg { width: 21px; height: 21px; }
+.feat h3 { margin: 0 0 8px; font-size: 16px; letter-spacing: 0; }
+.feat p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.75; }
+
+/* ---------- 使用步骤 ---------- */
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
+.step {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 var(--highlight), var(--shadow-sm);
+  padding: 24px 22px 22px;
+}
+.step::before {
+  counter-increment: step;
+  content: '0' counter(step);
+  display: block;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  margin-bottom: 10px;
+}
+.step h3 { margin: 0 0 8px; font-size: 16px; }
+.step p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.75; }
+
+/* ---------- 底部 CTA ---------- */
+.cta-band {
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background:
+    radial-gradient(600px 220px at 15% 0%, rgba(67, 141, 99, 0.14), transparent 70%),
+    color-mix(in srgb, var(--bg) 82%, transparent);
+  box-shadow: 0 28px 76px rgba(55, 75, 61, 0.14), inset 0 1px 0 var(--highlight);
+  -webkit-backdrop-filter: blur(24px) saturate(135%);
+  backdrop-filter: blur(24px) saturate(135%);
+  padding: 46px 40px;
+  text-align: center;
+}
+.cta-band h2 { margin: 0 0 10px; font-size: clamp(22px, 3.2vw, 30px); }
+.cta-band p { margin: 0 0 24px; color: var(--muted); font-size: 15px; }
+.cta-band .hero-cta { justify-content: center; margin-bottom: 0; }
+
+/* ---------- 页脚 ---------- */
+footer { padding: 48px 0 40px; }
+.foot-inner {
+  border-top: 1px solid var(--border);
+  padding-top: 26px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+.foot-brand { display: flex; align-items: center; gap: 9px; margin-right: auto; }
+.foot-brand svg { width: 26px; height: 26px; }
+.foot-brand b { font-size: 14px; }
+.foot-links { display: flex; gap: 18px; font-size: 13px; color: var(--muted); }
+.foot-links a:hover { color: var(--primary); }
+.foot-note { flex-basis: 100%; color: var(--subtle); font-size: 12px; line-height: 1.7; }
+
+/* ---------- 入场动画 ---------- */
+.reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.22, 1, 0.36, 1); }
+.reveal.in { opacity: 1; transform: none; }
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 920px) {
+  .hero-grid { grid-template-columns: 1fr; gap: 36px; }
+  .hero-visual { max-width: 480px; margin: 0 auto; }
+  .feat-grid, .steps { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 620px) {
+  section { padding: 52px 0; }
+  .hero { padding: 104px 0 56px; }
+  .hero::before { inset: 40px 4% 12px; }
+  .feat-grid, .steps { grid-template-columns: 1fr; }
+  .nav-actions .btn { height: 36px; padding: 0 13px; font-size: 13px; }
+  .brand-tag { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  .reveal { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- 品牌图标（复用面板 SVG：绿色圆角方块 + 嫩芽） -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="brand-sprout">
+      <rect width="48" height="48" rx="13" fill="#438d63"/>
+      <path d="M24 37c0-8 2.2-13.4 9-16.6-.4 7.6-3 12.8-9 16.6Z" fill="#dff0e2"/>
+      <path d="M24 37c0-8-2.2-13.4-9-16.6.4 7.6 3 12.8 9 16.6Z" fill="#a9d8b5"/>
+      <rect x="22.7" y="30" width="2.6" height="8" rx="1.3" fill="#eef7ef"/>
+    </g>
+  </defs>
+</svg>
+
+<!-- 顶部导航：右上角登录 / 注册 -->
+<nav class="nav" id="nav">
+  <div class="nav-inner wrap">
+    <a class="brand" href="#">
+      <svg class="brand-mark" viewBox="0 0 48 48"><use href="#brand-sprout"/></svg>
+      <span class="brand-name">QQ 农场挂机面板<span class="brand-tag">QQ FARM BOT</span></span>
+    </a>
+    <div class="nav-actions">
+      <a class="btn btn-ghost" href="/login">登录</a>
+      <a class="btn btn-primary" href="/register">立即注册</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <span class="kicker">多账号 · 全自动 · 液态玻璃面板</span>
+      <h1>多账号挂机，<br>把农场<em>交给全自动</em></h1>
+      <p>基于 Web 面板的 QQ 农场自动化工具：每账号独立种植与好友策略，自动收获、种植、施肥、偷菜、除虫，支持一键等级加速，图鉴、活动中心、商城与收益分析一站管理，手机电脑随时掌控。</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary btn-lg" href="/register">立即注册</a>
+        <a class="btn btn-ghost btn-lg" href="#features">查看功能</a>
+      </div>
+      <div class="hero-chips">
+        <span class="chip"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 12.5 2 8l1.4-1.4 3.1 3.1 6.1-6.1L14 5z"/></svg>全天候自动化</span>
+        <span class="chip"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 12.5 2 8l1.4-1.4 3.1 3.1 6.1-6.1L14 5z"/></svg>账号数据独立</span>
+        <span class="chip"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 12.5 2 8l1.4-1.4 3.1 3.1 6.1-6.1L14 5z"/></svg>移动端适配</span>
+        <span class="chip"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 12.5 2 8l1.4-1.4 3.1 3.1 6.1-6.1L14 5z"/></svg>离线提醒推送</span>
+      </div>
+    </div>
+
+    <div class="hero-visual">
+      <svg class="float-leaf" style="top:-26px; right:8px" width="44" height="44" viewBox="0 0 48 48"><use href="#brand-sprout"/></svg>
+      <div class="panel-card" role="img" aria-label="面板界面示意">
+        <div class="panel-top">
+          <i class="panel-dot"></i><i class="panel-dot"></i><i class="panel-dot"></i>
+          <span>农场概览 · 实时状态</span>
+        </div>
+        <div class="panel-row">
+          <span class="panel-ico" style="background:var(--primary-soft); color:var(--primary)">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1c1.2 2 .8 3.6-.5 4.8C6.2 7 6 8.3 6.6 10 4.9 9.6 4 8.2 4.3 6.4 4.6 4.6 6 3 8 1Zm.6 8.7c2.9-.7 4.9-2.7 5.4-6.3 1.7 2.8 1.4 5.5-.6 7.2-1.3 1.1-2.9 1.4-4.8.9ZM7 11.6V15h2v-3.4a5.6 5.6 0 0 1-2 0Z"/></svg>
+          </span>
+          <div class="panel-meta">
+            <b>3 号地块 · 冬小麦</b>
+            <small>成熟倒计时 00:42:18 · 已自动施肥</small>
+            <div class="bar"><i style="width:78%"></i></div>
+          </div>
+          <span class="panel-badge" style="background:var(--primary-soft); color:var(--primary)">生长中</span>
+        </div>
+        <div class="panel-row">
+          <span class="panel-ico" style="background:var(--teal-soft); color:var(--teal)">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a4 4 0 0 1 4 4c0 2.9-2.4 6.2-4 10-1.6-3.8-4-7.1-4-10a4 4 0 0 1 4-4Zm0 2.2A1.8 1.8 0 1 0 8 6.8 1.8 1.8 0 0 0 8 3.2Z"/></svg>
+          </span>
+          <div class="panel-meta">
+            <b>好友巡查 · 106 位好友</b>
+            <small>偷菜 / 帮忙 / 捣乱一次完成 · 黑名单已过滤</small>
+            <div class="bar"><i style="width:52%; background:var(--teal)"></i></div>
+          </div>
+          <span class="panel-badge" style="background:var(--teal-soft); color:var(--teal)">巡查中</span>
+        </div>
+        <div class="panel-row">
+          <span class="panel-ico" style="background:var(--warning-soft); color:var(--warning)">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5 9.9 5l3.9.6-2.8 2.8.7 3.9L8 10.4l-3.7 1.9.7-3.9L2.2 5.6 6.1 5 8 1.5Z"/></svg>
+          </span>
+          <div class="panel-meta">
+            <b>每日礼包 · 已领取 6 项</b>
+            <small>汇总任务 / 分享 / 月卡 / 图鉴奖励按天处理</small>
+          </div>
+          <span class="panel-badge" style="background:var(--warning-soft); color:var(--warning)">已完成</span>
+        </div>
+        <div class="panel-row">
+          <span class="panel-ico" style="background:var(--blue-soft); color:var(--blue)">
+            <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h5.5v5.5H2V2Zm6.5 0H14v5.5H8.5V2ZM2 8.5h5.5V14H2V8.5Zm6.5 0H14V14H8.5V8.5Z"/></svg>
+          </span>
+          <div class="panel-meta">
+            <b>收益分析 · 本周金币 +24.6%</b>
+            <small>作物收益对比 · 策略预览 · 批量黑名单</small>
+            <div class="bar"><i style="width:64%; background:var(--blue)"></i></div>
+          </div>
+          <span class="panel-badge" style="background:var(--blue-soft); color:var(--blue)">统计中</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- 功能 -->
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="kicker">FEATURES</span>
+      <h2>从种植到收益，一站托管</h2>
+      <p>覆盖 QQ 农场日常与活动的完整自动化链路，全部操作在 Web 面板完成，无需客户端常驻。</p>
+    </div>
+    <div class="feat-grid">
+      <div class="feat reveal">
+        <span class="feat-ico" style="background:var(--primary-soft); color:var(--primary)">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 1 0 14A7 7 0 0 1 8 1Zm0 2a5 5 0 1 0 0 10A5 5 0 0 0 8 3Zm0 1.6A3.4 3.4 0 1 1 4.6 8 3.4 3.4 0 0 1 8 4.6Zm0 1.7A1.7 1.7 0 1 0 9.7 8 1.7 1.7 0 0 0 8 6.3Z"/></svg>
+        </span>
+        <h3>多账号独立挂机</h3>
+        <p>游戏账号无限添加、独立运行，每个账号单独配置种植策略、好友策略、自动化开关与执行间隔，互不干扰。</p>
+      </div>
+      <div class="feat reveal">
+        <span class="feat-ico" style="background:var(--teal-soft); color:var(--teal)">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M10.5 1A4.5 4.5 0 0 1 15 5.5c0 1.2-.5 2.3-1.3 3.1l.3.3a1 1 0 0 1 0 1.4l-.7.7.7.7a1 1 0 0 1-1.4 1.4l-.7-.7-.7.7a1 1 0 0 1-1.4 0l-3.2-3.2A4.5 4.5 0 1 1 10.5 1ZM5.5 3A2.5 2.5 0 1 0 8 5.5 2.5 2.5 0 0 0 5.5 3Zm0 1.5a1 1 0 1 1-1 1 1 1 0 0 1 1-1Z"/></svg>
+        </span>
+        <h3>四种登录方式</h3>
+        <p>抓包 Code、微信扫码、QQ 扫码与萌卡 NT 一键登录；抓包获取的好友 GID 存入本地档案，换登录方式也能直接复用。</p>
+      </div>
+      <div class="feat reveal">
+        <span class="feat-ico" style="background:var(--warning-soft); color:var(--warning)">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1c1.2 2 .8 3.6-.5 4.8C6.2 7 6 8.3 6.6 10 4.9 9.6 4 8.2 4.3 6.4 4.6 4.6 6 3 8 1Zm.6 8.7c2.9-.7 4.9-2.7 5.4-6.3 1.7 2.8 1.4 5.5-.6 7.2-1.3 1.1-2.9 1.4-4.8.9ZM7 11.6V15h2v-3.4a5.6 5.6 0 0 1-2 0Z"/></svg>
+        </span>
+        <h3>农场全自动</h3>
+        <p>收获、种植、浇水、除草、除虫、铲除、土地升级与智能施肥全自动执行，支持一键务农、一键全收等面板快捷操作。</p>
+      </div>
+      <div class="feat reveal">
+        <span class="feat-ico" style="background:var(--violet-soft); color:var(--violet)">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a4 4 0 0 1 4 4c0 2.9-2.4 6.2-4 10-1.6-3.8-4-7.1-4-10a4 4 0 0 1 4-4Zm0 2.2A1.8 1.8 0 1 0 8 6.8 1.8 1.8 0 0 0 8 3.2Z"/></svg>
+        </span>
+        <h3>好友互动</h3>
+        <p>自动巡查好友农场：帮忙除草除虫浇水、偷菜、放草放虫一次进园全部完成，支持黑名单、安静时段与经验上限。</p>
+      </div>
+      <div class="feat reveal">
+        <span class="feat-ico" style="background:var(--primary-soft); color:var(--primary)">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h5.5v5.5H2V2Zm6.5 0H14v5.5H8.5V2ZM2 8.5h5.5V14H2V8.5Zm6.5 0H14V14H8.5V8.5Z"/></svg>
+        </span>
+        <h3>图鉴与活动中心</h3>
+        <p>作物图鉴与超变图鉴进度、属性加成一目了然；千星游记、观星礼录、星砂商店、鹊桥寄情等活动统一领取与兑换。</p>
+      </div>
+      <div class="feat reveal">
+        <span class="feat-ico" style="background:var(--blue-soft); color:var(--blue)">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3A.5.5 0 0 1 2 2.5h1.9a.5.5 0 0 1 .48.36L4.9 4.5H14a.5.5 0 0 1 .48.65l-1.5 5A.5.5 0 0 1 12.5 10.5H6L5.6 12H13v1.5H4.75a.75.75 0 0 1-.72-.96L4.6 10.4 3 4.5H1.5V3Zm4.25 9a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5Zm6 0a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5Z"/></svg>
+        </span>
+        <h3>背包 · 商城 · 收益分析</h3>
+        <p>背包使用与批量出售、神秘商人、游戏商城折扣限购、种子果实收益对比，种植策略按最大经验或净利润自动选择。</p>
+      </div>
+      <div class="feat reveal">
+        <span class="feat-ico" style="background:var(--danger-soft); color:var(--danger)">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M9.3 1 3.6 9h3.6l-1.2 6L11.8 7H8.1l1.2-6Z"/></svg>
+        </span>
+        <h3>等级加速</h3>
+        <p>一键执行 QQ 等级任务，多项任务自由选择，支持每日定时自动执行，挂机的同时快速提升账号等级。</p>
+      </div>
+      <div class="feat reveal">
+        <span class="feat-ico" style="background:var(--violet-soft); color:var(--violet)">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.5a2 2 0 0 1 2 2v.3A4.5 4.5 0 0 1 12.5 8v3.5l1.5 1.5v.5h-12V13l1.5-1.5V8A4.5 4.5 0 0 1 6 3.8v-.3a2 2 0 0 1 2-2Zm0 13a1.8 1.8 0 0 1-1.8-1.5h3.6A1.8 1.8 0 0 1 8 14.5Z"/></svg>
+        </span>
+        <h3>实时监控与推送</h3>
+        <p>Socket.IO 实时状态与日志、账号启停监控、离线自动提醒，事件推送对接通知渠道，异常第一时间知晓。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 使用步骤 -->
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="kicker">HOW IT WORKS</span>
+      <h2>三步开始挂机</h2>
+      <p>注册后添加游戏账号并配置策略，剩下的交给面板自动完成。</p>
+    </div>
+    <div class="steps">
+      <div class="step reveal">
+        <h3>注册账号</h3>
+        <p>创建面板账号并登录，即可添加游戏账号开始使用，数据独立、互不干扰。</p>
+      </div>
+      <div class="step reveal">
+        <h3>添加游戏账号</h3>
+        <p>支持抓包 Code、微信扫码、QQ 扫码与萌卡 NT 登录，为账号选择种植策略并开启自动化。</p>
+      </div>
+      <div class="step reveal">
+        <h3>自动挂机</h3>
+        <p>面板全天候托管农场与好友互动，实时查看状态与日志，离线自动推送提醒，手机电脑随时管理。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 底部 CTA -->
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="cta-band reveal">
+      <h2>现在注册，让农场自己运转</h2>
+      <p>注册即开即用，多账号全自动托管，手机电脑随时随地掌控你的农场。</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary btn-lg" href="/register">立即注册</a>
+        <a class="btn btn-ghost btn-lg" href="/login">登录面板</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-inner">
+    <div class="foot-brand">
+      <svg viewBox="0 0 48 48"><use href="#brand-sprout"/></svg>
+      <b>QQ 农场挂机面板</b>
+    </div>
+    <div class="foot-links">
+      <a href="/login">登录</a>
+      <a href="/register">注册</a>
+      <a href="#features">功能</a>
+      <a href="#">回到顶部</a>
+    </div>
+    <p class="foot-note">本工具仅供学习与技术交流，请合理使用并遵守游戏服务协议，因使用本项目产生的任何问题由使用者自行承担。</p>
+  </div>
+</footer>
+
+<script>
+// 导航滚动毛玻璃
+const nav = document.getElementById('nav');
+const onScroll = () => nav.classList.toggle('is-scrolled', window.scrollY > 8);
+window.addEventListener('scroll', onScroll, { passive: true });
+onScroll();
+
+// 入场动画
+const io = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+  }
+}, { threshold: 0.12 });
+document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+</script>
+</body>
+</html>
