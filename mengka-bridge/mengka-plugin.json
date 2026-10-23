@@ -1,0 +1,96 @@
+{
+  "schema": 3,
+  "plugin_id": "qq-farm-bridge",
+  "name": "QQ农场助手桥接",
+  "version": "1.6.1",
+  "min_framework": "2.5.3",
+  "author": "WorkBuddy",
+  "description": "把萌卡在线 QQ 的农场登录 code 自动/手动推送到 QQ农场智能助手（qq-farm-bot）。支持多台农场服务器（管理页可新增/删除/选择推送目标），自动适配「访问 Code」/账号密码/无验证三种农场后台。",
+  "notes": "【Linux x86_64 构建】入口 bin/node-linux-amd64，自带 Node 运行时，不依赖系统 Node.js。v1.6.1：新增 Windows x64 构建（内置 bin/node-win-x64.exe，Windows 版萌卡可直接导入，功能与 Linux 构建完全一致）；v1.6.0：多农场服务器管理 —— 插件管理页可新增/删除服务器并下拉选择推送目标（推送只发到选中的那台，每台单独配地址/账号/密码或访问Code，配置持久化）；自动适配访问 Code 版（/api/auth/status + /api/login{code} 换 Cookie）/账号密码版/无验证版，401 自动重登；取码与推送明细、在线 QQ 列表保持原样；自带 node 运行时，不依赖系统 Node.js。",
+  "runtime": {
+    "entry": "bin/node-linux-amd64",
+    "args": [
+      "native.mjs"
+    ],
+    "transport": "native-ipc-v1",
+    "api_version": "1",
+    "admin": true,
+    "actions": [
+      "get_bot_list",
+      "get_qq_farm_code",
+      "get_plugin_context"
+    ]
+  },
+  "config": {
+    "schema": 1,
+    "fields": [
+      {
+        "key": "farm_url",
+        "label": "主服务器地址",
+        "type": "string",
+        "group": "农场连接",
+        "required": true,
+        "default": "http://127.0.0.1:3007",
+        "placeholder": "http://192.168.1.199:3007",
+        "description": "第 1 台农场（qq-farm-bot）面板地址；更多服务器在插件管理页「服务器管理」里增删"
+      },
+      {
+        "key": "farm_username",
+        "label": "管理员用户名",
+        "type": "string",
+        "group": "农场连接",
+        "required": false,
+        "default": "admin",
+        "description": "账号密码版农场填管理员账号；「访问 Code」版可留空"
+      },
+      {
+        "key": "farm_password",
+        "label": "密码 / 访问 Code",
+        "type": "string",
+        "group": "农场连接",
+        "required": true,
+        "secret": true,
+        "description": "账号密码版填管理员密码；「访问 Code」版直接填访问 Code。只写入框架加密配置，不回显"
+      },
+      {
+        "key": "interval_minutes",
+        "label": "自动推送间隔（分钟）",
+        "type": "integer",
+        "group": "推送设置",
+        "required": false,
+        "default": 5,
+        "min": 1,
+        "max": 120,
+        "step": 1,
+        "description": "每隔多少分钟为在线 QQ 重新取码并推送到选中服务器"
+      },
+      {
+        "key": "qq_filter",
+        "label": "仅推送指定 QQ（可选）",
+        "type": "text",
+        "group": "推送设置",
+        "required": false,
+        "placeholder": "如 258901523,910009183，留空表示全部在线安卓 QQ",
+        "description": "逗号分隔的 QQ 号列表；留空则推送全部在线账号"
+      },
+      {
+        "key": "push_android",
+        "label": "推送 Android QQ",
+        "type": "boolean",
+        "group": "推送设置",
+        "required": false,
+        "default": true,
+        "description": "主推送渠道，保持开启；关闭后安卓 QQ 不再取码"
+      },
+      {
+        "key": "push_linux",
+        "label": "推送 Linux QQ（实验）",
+        "type": "boolean",
+        "group": "推送设置",
+        "required": false,
+        "default": false,
+        "description": "Linux 协议的农场取码不受官方支持，开启后会逐个尝试，失败的账号在推送结果中单独标出"
+      }
+    ]
+  }
+}

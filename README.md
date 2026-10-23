@@ -20,6 +20,7 @@
 
 - 游戏账号可无限添加并独立运行，每个账号可单独配置种植、好友、自动化和执行间隔策略
 - 支持抓包 Code 登录、微信扫码登录和 QQ扫码登录
+- 支持萌卡 NT 对接（独立协议服务器）：QQ 密码/扫码登录进萌卡、好友 GID 复用与 QQ 等级加速，部署步骤见 [docs/mengka-deploy.md](docs/mengka-deploy.md)，桥接插件源码在 [mengka-bridge/](mengka-bridge/)
 - 抓包登录获取的 QQ 好友 GID 自动存入本地档案，同一 QQ 之后以填写 Code、QQ 扫码或萌卡登录时直接复用档案组建好友列表（详见 [docs/qq-friend-gid-archive.md](docs/qq-friend-gid-archive.md)）
 - 支持账号启停、状态监控、实时日志和离线提醒
 - 支持卡密注册普通用户：时间卡注册即开通对应有效期，额度卡提升账号上限；普通用户与超级管理员的数据完全隔离，只能管理自己名下的游戏账号
@@ -325,6 +326,7 @@ qq-farm-bot/
 │   ├── src/views/         # 各功能页面
 │   └── dist/              # 前端构建产物
 ├── docs/                  # 项目专题文档
+├── mengka-bridge/         # 萌卡 NT 桥接插件源码（部署见 docs/mengka-deploy.md）
 ├── tools/                 # 配置下载、图片下载与协议分析工具
 ├── docker-compose.yml
 ├── pnpm-workspace.yaml

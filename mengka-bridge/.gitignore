@@ -1,0 +1,4 @@
+# 自带 Node 运行时体积过大，不入库；打包插件时按 README 下载放入
+bin/
+*.zip
+*.tar.gz
