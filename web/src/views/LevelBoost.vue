@@ -275,15 +275,6 @@ onMounted(loadAccounts)
 <template>
   <div class="page-stack">
     <div class="settings-content space-y-4">
-      <div>
-        <h3 class="text-lg text-gray-900 font-bold dark:text-gray-100">
-          等级加速
-        </h3>
-        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-          通过萌卡框架完成 QQ 等级加速任务：查看每日加速与任务进度、一键补挂任务、配置每日自动执行计划
-        </p>
-      </div>
-
       <EmptyState
         v-if="capabilityError"
         title="萌卡框架版本过低"
