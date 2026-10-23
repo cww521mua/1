@@ -10,6 +10,10 @@ import BaseTextarea from '@/components/ui/BaseTextarea.vue'
 
 interface LoginTabItem { key: string, label: string, enabled: boolean }
 interface LoginConfigForm {
+  wechatQrLogin: boolean
+  qqQrLogin: boolean
+  napCatEndpoint: string
+  napCatSignature: string
   tabs: LoginTabItem[]
   mengkaDefaultProtocol: 'tablet' | 'phone'
   mengkaAddButtonLabel: string
@@ -41,6 +45,10 @@ const protocolOptions = [
 const loading = ref(true)
 const saving = ref(false)
 const form = ref<LoginConfigForm>({
+  wechatQrLogin: true,
+  qqQrLogin: false,
+  napCatEndpoint: '',
+  napCatSignature: '',
   tabs: [],
   mengkaDefaultProtocol: 'tablet',
   mengkaAddButtonLabel: '添加QQ号',
@@ -48,9 +56,26 @@ const form = ref<LoginConfigForm>({
   mengkaEntryHint: '列表里没有你的 QQ？发起后按提示完成验证（短信验证码 / 扫码）即可自动登录萌卡并绑定',
 })
 
+/** 微信 / QQ 扫码标签的显示由对应扫码登录开关控制，不提供第二个开关 */
+function tabSwitchHidden(key: string): boolean {
+  return key === 'wx_qr' || key === 'qq_qr'
+}
+
+function tabSwitchLockedText(key: string): string {
+  if (key === 'wx_qr')
+    return form.value.wechatQrLogin ? '显示中（由微信扫码登录开关控制）' : '已隐藏（微信扫码登录未开启）'
+  if (key === 'qq_qr')
+    return form.value.qqQrLogin ? '显示中（由QQ扫码登录开关控制）' : '已隐藏（QQ扫码登录未开启）'
+  return ''
+}
+
 function toForm(data: any) {
   const tabs = Array.isArray(data?.tabs) ? data.tabs : []
   form.value = {
+    wechatQrLogin: data?.wechatQrLogin !== false,
+    qqQrLogin: data?.qqQrLogin === true,
+    napCatEndpoint: String(data?.napCatEndpoint || ''),
+    napCatSignature: String(data?.napCatSignature || ''),
     tabs: tabs
       .map((tab: any) => ({
         key: String(tab?.key || ''),
@@ -105,9 +130,17 @@ function showAlertInline(text: string, ok: boolean) {
 async function handleSave() {
   if (saving.value)
     return
+  if (form.value.qqQrLogin && (!form.value.napCatEndpoint.trim() || !form.value.napCatSignature.trim())) {
+    showAlertInline('开启 QQ 扫码登录前，请配置 NapCat 接口地址和接口签名', false)
+    return
+  }
   saving.value = true
   try {
     const { data } = await api.post('/api/settings/login-config', {
+      wechatQrLogin: form.value.wechatQrLogin,
+      qqQrLogin: form.value.qqQrLogin,
+      napCatEndpoint: form.value.napCatEndpoint.trim(),
+      napCatSignature: form.value.napCatSignature.trim(),
       tabs: form.value.tabs,
       mengkaDefaultProtocol: form.value.mengkaDefaultProtocol,
       mengkaAddButtonLabel: form.value.mengkaAddButtonLabel.trim(),
@@ -148,6 +181,50 @@ async function handleSave() {
     </div>
 
     <template v-else>
+      <!-- 扫码登录开关 -->
+      <section class="farm-card rounded-lg p-4">
+        <div class="mb-4 flex items-start gap-3">
+          <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-900/25 dark:text-blue-400">
+            <span class="i-carbon-camera text-xl" />
+          </div>
+          <div>
+            <h4 class="text-base text-gray-900 font-bold dark:text-gray-100">
+              扫码登录
+            </h4>
+            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              对应登录方式标签的显示开关（原系统设置中的登录设置已合并至此）
+            </p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div class="border border-gray-200 rounded-lg bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30">
+            <BaseSwitch v-model="form.wechatQrLogin" label="微信扫码登录" />
+          </div>
+          <div class="border border-gray-200 rounded-lg bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30">
+            <BaseSwitch v-model="form.qqQrLogin" label="QQ扫码登录" />
+          </div>
+        </div>
+
+        <div
+          v-if="form.qqQrLogin"
+          class="grid grid-cols-1 mt-4 gap-3 border border-gray-200 rounded-lg bg-gray-50/70 p-4 sm:grid-cols-2 dark:border-gray-700 dark:bg-gray-900/30"
+        >
+          <BaseInput
+            v-model="form.napCatEndpoint"
+            label="NapCat接口地址"
+            type="text"
+            placeholder="http://127.0.0.1:6099"
+          />
+          <BaseInput
+            v-model="form.napCatSignature"
+            label="NapCat接口签名"
+            type="password"
+            placeholder="请输入 NapCat 接口签名"
+          />
+        </div>
+      </section>
+
       <!-- 登录方式标签 -->
       <section class="farm-card rounded-lg p-4">
         <div class="mb-4 flex items-start gap-3">
@@ -171,9 +248,12 @@ async function handleSave() {
             class="border border-gray-200 rounded-lg bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30"
           >
             <div class="flex flex-wrap items-center gap-3">
-              <BaseSwitch v-model="tab.enabled">
+              <BaseSwitch v-if="!tabSwitchHidden(tab.key)" v-model="tab.enabled">
                 <span class="text-xs text-gray-500 dark:text-gray-400">显示</span>
               </BaseSwitch>
+              <span v-else class="text-xs text-gray-400 dark:text-gray-500">
+                {{ tabSwitchLockedText(tab.key) }}
+              </span>
               <div class="min-w-0 flex-1">
                 <BaseInput v-model="tab.label" type="text" :placeholder="TAB_KEY_LABELS[tab.key]" />
                 <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">

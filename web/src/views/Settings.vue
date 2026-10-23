@@ -1336,7 +1336,6 @@ async function handleTestOffline() {
 
 const systemConfigSaving = ref(false)
 const systemConfigLoading = ref(false)
-const loginSettingsSaving = ref(false)
 
 const defaultDeviceInfo = {
   os: 'Windows',
@@ -1363,12 +1362,6 @@ const defaultSystemConfig = ref({
   os: 'Windows',
   timeZone: 'Asia/Shanghai',
   deviceInfo: { ...defaultDeviceInfo },
-})
-const localLoginSettings = ref({
-  wechatQrLogin: true,
-  qqQrLogin: false,
-  napCatEndpoint: '',
-  napCatSignature: '',
 })
 const localBrand = ref({
   icon: '',
@@ -1402,15 +1395,6 @@ function normalizeSystemConfig(source: any, fallback: any) {
     os: source?.os || 'Windows',
     timeZone: source?.timeZone || fallback.timeZone || 'Asia/Shanghai',
     deviceInfo: source?.deviceInfo ? { ...fallback.deviceInfo, ...source.deviceInfo } : { ...fallback.deviceInfo },
-  }
-}
-
-function normalizeLoginSettings(source: any) {
-  return {
-    wechatQrLogin: typeof source?.wechatQrLogin === 'boolean' ? source.wechatQrLogin : true,
-    qqQrLogin: typeof source?.qqQrLogin === 'boolean' ? source.qqQrLogin : false,
-    napCatEndpoint: typeof source?.napCatEndpoint === 'string' ? source.napCatEndpoint.trim() : '',
-    napCatSignature: typeof source?.napCatSignature === 'string' ? source.napCatSignature.trim() : '',
   }
 }
 
@@ -1452,7 +1436,6 @@ async function loadSystemConfig() {
       }
       defaultSystemConfig.value = normalizeSystemConfig(data.data.default, defaultSystemConfig.value)
       localSystemConfig.value = normalizeSystemConfig(data.data.saved || data.data.default, defaultSystemConfig.value)
-      localLoginSettings.value = normalizeLoginSettings(data.data.loginSettings)
     }
   }
   catch (e) {
@@ -1460,28 +1443,6 @@ async function loadSystemConfig() {
   }
   finally {
     systemConfigLoading.value = false
-  }
-}
-
-async function handleSaveLoginSettings() {
-  if (localLoginSettings.value.qqQrLogin
-    && (!localLoginSettings.value.napCatEndpoint.trim() || !localLoginSettings.value.napCatSignature.trim())) {
-    showAlert('开启 QQ 扫码登录前，请配置 NapCat 接口地址和接口签名', 'danger')
-    return
-  }
-  loginSettingsSaving.value = true
-  try {
-    const { data } = await api.post('/api/settings/login-config', localLoginSettings.value)
-    if (data?.ok) {
-      localLoginSettings.value = normalizeLoginSettings(data.data)
-    }
-    showAlert(data?.ok ? '登录设置已保存' : getApiErrorMessage(data, '保存失败'), data?.ok ? 'primary' : 'danger')
-  }
-  catch (e: any) {
-    showAlert(`保存失败: ${getApiErrorMessage(e, '未知错误')}`, 'danger')
-  }
-  finally {
-    loginSettingsSaving.value = false
   }
 }
 
@@ -2414,60 +2375,6 @@ async function handleResetSystemConfig() {
             </section>
 
             <div class="min-w-0 space-y-4">
-              <section class="farm-card rounded-lg p-4">
-                <div class="mb-4 flex items-start gap-3">
-                  <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-900/25 dark:text-violet-400">
-                    <span class="i-carbon-login text-xl" />
-                  </div>
-                  <div>
-                    <h4 class="text-base text-gray-900 font-bold dark:text-gray-100">
-                      登录设置
-                    </h4>
-                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                      控制添加账号时可用的扫码登录方式
-                    </p>
-                  </div>
-                </div>
-
-                <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div class="border border-gray-200 rounded-lg bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30">
-                    <BaseSwitch v-model="localLoginSettings.wechatQrLogin" label="微信扫码登录" />
-                  </div>
-                  <div class="border border-gray-200 rounded-lg bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30">
-                    <BaseSwitch v-model="localLoginSettings.qqQrLogin" label="QQ扫码登录" />
-                  </div>
-                </div>
-
-                <div
-                  v-if="localLoginSettings.qqQrLogin"
-                  class="grid grid-cols-1 mt-4 gap-3 border border-gray-200 rounded-lg bg-gray-50/70 p-4 sm:grid-cols-2 dark:border-gray-700 dark:bg-gray-900/30"
-                >
-                  <BaseInput
-                    v-model="localLoginSettings.napCatEndpoint"
-                    label="NapCat接口地址"
-                    type="text"
-                    placeholder="http://127.0.0.1:6099"
-                  />
-                  <BaseInput
-                    v-model="localLoginSettings.napCatSignature"
-                    label="NapCat接口签名"
-                    type="password"
-                    placeholder="请输入 NapCat 接口签名"
-                  />
-                </div>
-
-                <div class="mt-3 flex justify-end border-t pt-3 dark:border-gray-700">
-                  <BaseButton
-                    variant="primary"
-                    size="sm"
-                    :loading="loginSettingsSaving"
-                    @click="handleSaveLoginSettings"
-                  >
-                    保存登录设置
-                  </BaseButton>
-                </div>
-              </section>
-
               <section class="farm-card rounded-lg p-4">
                 <div class="mb-4 flex items-start gap-3">
                   <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-lg bg-pink-50 text-pink-600 dark:bg-pink-900/25 dark:text-pink-400">
