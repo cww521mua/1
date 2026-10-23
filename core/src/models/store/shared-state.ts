@@ -41,6 +41,17 @@ const DEFAULT_LOGIN_SETTINGS: LoginSettings = {
     qqQrLogin: false,
     napCatEndpoint: '',
     napCatSignature: '',
+    tabs: [
+        { key: 'code', label: '输入 Code 登录', enabled: true },
+        { key: 'wx_qr', label: '微信扫码登录', enabled: true },
+        { key: 'qq_qr', label: 'QQ扫码登录', enabled: true },
+        { key: 'mengka', label: '萌卡登录', enabled: true },
+        { key: 'capture', label: '抓包登录', enabled: true },
+    ],
+    mengkaDefaultProtocol: 'tablet',
+    mengkaAddButtonLabel: '添加QQ号',
+    mengkaProtocolNote: '默认平板，平板不会顶手机QQ号，安卓会顶号，请知悉',
+    mengkaEntryHint: '列表里没有你的 QQ？发起后按提示完成验证（短信验证码 / 扫码）即可自动登录萌卡并绑定',
 };
 
 const DEFAULT_CAPTURE_CONFIG: CaptureConfig = {
@@ -585,19 +596,34 @@ function loadGlobalConfig(): void {
             }
 
             if (data.loginSettings && typeof data.loginSettings === 'object') {
+                const srcLogin = data.loginSettings;
                 globalConfig.loginSettings = {
-                    wechatQrLogin: typeof data.loginSettings.wechatQrLogin === 'boolean'
-                        ? data.loginSettings.wechatQrLogin
+                    wechatQrLogin: typeof srcLogin.wechatQrLogin === 'boolean'
+                        ? srcLogin.wechatQrLogin
                         : DEFAULT_LOGIN_SETTINGS.wechatQrLogin,
-                    qqQrLogin: typeof data.loginSettings.qqQrLogin === 'boolean'
-                        ? data.loginSettings.qqQrLogin
+                    qqQrLogin: typeof srcLogin.qqQrLogin === 'boolean'
+                        ? srcLogin.qqQrLogin
                         : DEFAULT_LOGIN_SETTINGS.qqQrLogin,
-                    napCatEndpoint: typeof data.loginSettings.napCatEndpoint === 'string'
-                        ? data.loginSettings.napCatEndpoint.trim()
+                    napCatEndpoint: typeof srcLogin.napCatEndpoint === 'string'
+                        ? srcLogin.napCatEndpoint.trim()
                         : DEFAULT_LOGIN_SETTINGS.napCatEndpoint,
-                    napCatSignature: typeof data.loginSettings.napCatSignature === 'string'
-                        ? data.loginSettings.napCatSignature.trim()
+                    napCatSignature: typeof srcLogin.napCatSignature === 'string'
+                        ? srcLogin.napCatSignature.trim()
                         : DEFAULT_LOGIN_SETTINGS.napCatSignature,
+                    // 登录方式标签与萌卡文案：宽松透传，读取时由 global-config 的 normalize 兜底
+                    tabs: Array.isArray(srcLogin.tabs) ? srcLogin.tabs : DEFAULT_LOGIN_SETTINGS.tabs,
+                    mengkaDefaultProtocol: srcLogin.mengkaDefaultProtocol === 'phone'
+                        ? 'phone'
+                        : DEFAULT_LOGIN_SETTINGS.mengkaDefaultProtocol,
+                    mengkaAddButtonLabel: typeof srcLogin.mengkaAddButtonLabel === 'string'
+                        ? srcLogin.mengkaAddButtonLabel
+                        : DEFAULT_LOGIN_SETTINGS.mengkaAddButtonLabel,
+                    mengkaProtocolNote: typeof srcLogin.mengkaProtocolNote === 'string'
+                        ? srcLogin.mengkaProtocolNote
+                        : DEFAULT_LOGIN_SETTINGS.mengkaProtocolNote,
+                    mengkaEntryHint: typeof srcLogin.mengkaEntryHint === 'string'
+                        ? srcLogin.mengkaEntryHint
+                        : DEFAULT_LOGIN_SETTINGS.mengkaEntryHint,
                 };
             }
 

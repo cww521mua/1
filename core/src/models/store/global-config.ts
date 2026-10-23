@@ -163,6 +163,39 @@ function setCaptureConfig(config: any): any {
     return { ...globalConfig.captureConfig };
 }
 
+const LOGIN_TAB_DEFAULTS: { key: string; label: string }[] = [
+    { key: 'code', label: '输入 Code 登录' },
+    { key: 'wx_qr', label: '微信扫码登录' },
+    { key: 'qq_qr', label: 'QQ扫码登录' },
+    { key: 'mengka', label: '萌卡登录' },
+    { key: 'capture', label: '抓包登录' },
+];
+
+const LOGIN_TAB_KEY_SET = new Set(LOGIN_TAB_DEFAULTS.map(item => item.key));
+
+/** 登录方式标签：仅接受已知 key、去重、空标题回退默认、缺失的 key 按默认顺序补齐在末尾 */
+function normalizeLoginTabs(raw: unknown) {
+    const list = Array.isArray(raw) ? raw : [];
+    const seen = new Set<string>();
+    const out: { key: string; label: string; enabled: boolean }[] = [];
+    for (const item of list) {
+        const src: Record<string, any> = (item && typeof item === 'object') ? item as Record<string, any> : {};
+        const key = String(src.key ?? '').trim();
+        if (!LOGIN_TAB_KEY_SET.has(key) || seen.has(key)) continue;
+        seen.add(key);
+        const fallbackLabel = LOGIN_TAB_DEFAULTS.find(item => item.key === key)!.label;
+        out.push({
+            key,
+            label: (String(src.label ?? '').trim() || fallbackLabel).slice(0, 30),
+            enabled: src.enabled !== false,
+        });
+    }
+    for (const item of LOGIN_TAB_DEFAULTS) {
+        if (!seen.has(item.key)) out.push({ key: item.key, label: item.label, enabled: true });
+    }
+    return out;
+}
+
 function normalizeLoginSettings(input: unknown): LoginSettings {
     const src: Record<string, any> = (input && typeof input === 'object') ? input as Record<string, any> : {};
     return {
@@ -170,6 +203,11 @@ function normalizeLoginSettings(input: unknown): LoginSettings {
         qqQrLogin: typeof src.qqQrLogin === 'boolean' ? src.qqQrLogin : DEFAULT_LOGIN_SETTINGS.qqQrLogin,
         napCatEndpoint: typeof src.napCatEndpoint === 'string' ? src.napCatEndpoint.trim() : DEFAULT_LOGIN_SETTINGS.napCatEndpoint,
         napCatSignature: typeof src.napCatSignature === 'string' ? src.napCatSignature.trim() : DEFAULT_LOGIN_SETTINGS.napCatSignature,
+        tabs: normalizeLoginTabs(src.tabs),
+        mengkaDefaultProtocol: src.mengkaDefaultProtocol === 'phone' ? 'phone' : 'tablet',
+        mengkaAddButtonLabel: (String(src.mengkaAddButtonLabel ?? '').trim() || '添加QQ号').slice(0, 30),
+        mengkaProtocolNote: (String(src.mengkaProtocolNote ?? '').trim() || '默认平板，平板不会顶手机QQ号，安卓会顶号，请知悉').slice(0, 300),
+        mengkaEntryHint: (String(src.mengkaEntryHint ?? '').trim() || '列表里没有你的 QQ？发起后按提示完成验证（短信验证码 / 扫码）即可自动登录萌卡并绑定').slice(0, 300),
     };
 }
 

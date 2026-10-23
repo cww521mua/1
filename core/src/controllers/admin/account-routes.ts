@@ -527,7 +527,7 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
         try {
             const loginSettings = store.getLoginSettings
                 ? store.getLoginSettings()
-                : { wechatQrLogin: true, qqQrLogin: false, napCatEndpoint: '', napCatSignature: '' };
+                : { wechatQrLogin: true, qqQrLogin: false, napCatEndpoint: '', napCatSignature: '', tabs: [], mengkaDefaultProtocol: 'tablet', mengkaAddButtonLabel: '', mengkaProtocolNote: '', mengkaEntryHint: '' };
             res.json({ ok: true, data: loginSettings });
         } catch (e: any) {
             handleApiError(res, e);
@@ -544,6 +544,11 @@ function mountAccountRoutes(app: Application, ctx: AdminContext): void {
                     qqQrLogin: body.qqQrLogin,
                     napCatEndpoint: body.napCatEndpoint,
                     napCatSignature: body.napCatSignature,
+                    tabs: body.tabs,
+                    mengkaDefaultProtocol: body.mengkaDefaultProtocol,
+                    mengkaAddButtonLabel: body.mengkaAddButtonLabel,
+                    mengkaProtocolNote: body.mengkaProtocolNote,
+                    mengkaEntryHint: body.mengkaEntryHint,
                 })
                 : { wechatQrLogin: true, qqQrLogin: false, napCatEndpoint: '', napCatSignature: '' };
             res.json({ ok: true, data: loginSettings });

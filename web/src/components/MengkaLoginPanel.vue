@@ -37,6 +37,10 @@ const props = defineProps<{
   }
   mode: 'add' | 'relogin'
   reloginBot?: { selfId: string, nickname: string, online: boolean } | null
+  /** 默认登录协议：tablet=平板（不顶手机在线）、phone=手机；留空不自动选择 */
+  defaultProtocol?: 'tablet' | 'phone'
+  /** 登录协议说明文字；留空使用内置默认 */
+  protocolNote?: string
 }>()
 
 defineEmits<{ (e: 'close'): void }>()
@@ -58,8 +62,19 @@ function verifyMethodLabel(type: number): string {
   return `其他方式（${type}）`
 }
 
+/** 按默认协议偏好选择（当前未手动选择时）：平板不顶手机在线，默认优先平板 */
+async function applyDefaultProtocol() {
+  if (props.login.protocolId || !props.defaultProtocol || !props.login.protocols.length)
+    return
+  const wantType = props.defaultProtocol === 'phone' ? 'Phone' : 'Pad'
+  const match = props.login.protocols.find(item => item.type === wantType)
+    || props.login.protocols.find(item => item.type === 'Pad')
+  if (match)
+    props.login.protocolId = match.id
+}
+
 onMounted(() => {
-  void props.login.loadProtocols()
+  void props.login.loadProtocols().then(() => applyDefaultProtocol())
 })
 </script>
 
@@ -106,7 +121,7 @@ onMounted(() => {
           placeholder="选择登录协议"
         />
         <p class="-mt-2 text-xs opacity-60">
-          默认 Android 9.2.70；农场授权仅支持 Android 协议
+          {{ props.protocolNote || '默认平板，平板不会顶手机QQ号，安卓会顶号，请知悉' }}
         </p>
         <BaseInput
           v-model="login.password"

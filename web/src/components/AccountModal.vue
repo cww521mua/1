@@ -48,11 +48,23 @@ const loading = ref(false)
 const errorMessage = ref('')
 const activeLoginTab = ref<'code' | 'wx_qr' | 'qq_qr' | 'mengka' | 'capture'>('code')
 const loginSettingsLoaded = ref(false)
+const LOGIN_TAB_LABELS: Record<string, string> = {
+  code: '输入 Code 登录',
+  wx_qr: '微信扫码登录',
+  qq_qr: 'QQ扫码登录',
+  mengka: '萌卡登录',
+  capture: '抓包登录',
+}
 const loginSettings = ref({
   wechatQrLogin: true,
   qqQrLogin: false,
   napCatEndpoint: '',
   napCatSignature: '',
+  tabs: Object.entries(LOGIN_TAB_LABELS).map(([key, label]) => ({ key, label, enabled: true })),
+  mengkaDefaultProtocol: 'tablet' as 'tablet' | 'phone',
+  mengkaAddButtonLabel: '添加QQ号',
+  mengkaProtocolNote: '默认平板，平板不会顶手机QQ号，安卓会顶号，请知悉',
+  mengkaEntryHint: '列表里没有你的 QQ？发起后按提示完成验证（短信验证码 / 扫码）即可自动登录萌卡并绑定',
 })
 let loginSettingsRequestVersion = 0
 const wxTaskId = ref('')
@@ -97,6 +109,26 @@ const captureFlow = ref<CaptureFlowState | null>(null)
 
 const wechatQrLoginEnabled = computed(() => loginSettingsLoaded.value && loginSettings.value.wechatQrLogin)
 const qqQrLoginEnabled = computed(() => loginSettingsLoaded.value && loginSettings.value.qqQrLogin)
+
+/** 标签能力开关：微信/QQ 受登录设置控制，萌卡/抓包受服务端状态控制 */
+const loginTabCapability = computed<Record<string, boolean>>(() => ({
+  code: true,
+  wx_qr: wechatQrLoginEnabled.value,
+  qq_qr: qqQrLoginEnabled.value,
+  mengka: mengkaEnabled.value,
+  capture: captureEnabled.value,
+}))
+
+/** 按配置顺序过滤出可见的登录方式标签 */
+const visibleLoginTabs = computed(() => loginSettings.value.tabs
+  .filter(tab => tab.enabled && loginTabCapability.value[tab.key]))
+
+/** 当前标签不可见时回退到第一个可见标签；全部不可见时退回 Code */
+function fallbackLoginTab(): 'code' | 'wx_qr' | 'qq_qr' | 'mengka' | 'capture' {
+  if (visibleLoginTabs.value.some(tab => tab.key === activeLoginTab.value))
+    return activeLoginTab.value
+  return (visibleLoginTabs.value[0]?.key || 'code') as 'code' | 'wx_qr' | 'qq_qr' | 'mengka' | 'capture'
+}
 
 const captureHelpSteps = computed(() => captureHelpMode.value === 'first'
   ? [
@@ -441,11 +473,23 @@ async function loadLoginSettings() {
     if (requestVersion !== loginSettingsRequestVersion)
       return
     const data = response.data?.data
+    const tabs = Array.isArray(data?.tabs) ? data.tabs : []
     loginSettings.value = {
       wechatQrLogin: typeof data?.wechatQrLogin === 'boolean' ? data.wechatQrLogin : true,
       qqQrLogin: typeof data?.qqQrLogin === 'boolean' ? data.qqQrLogin : false,
       napCatEndpoint: typeof data?.napCatEndpoint === 'string' ? data.napCatEndpoint : '',
       napCatSignature: typeof data?.napCatSignature === 'string' ? data.napCatSignature : '',
+      tabs: tabs
+        .map((tab: any) => ({
+          key: String(tab?.key || ''),
+          label: String(tab?.label || LOGIN_TAB_LABELS[tab?.key] || tab?.key || '').trim(),
+          enabled: tab?.enabled !== false,
+        }))
+        .filter((tab: any) => LOGIN_TAB_LABELS[tab.key]),
+      mengkaDefaultProtocol: data?.mengkaDefaultProtocol === 'phone' ? 'phone' : 'tablet',
+      mengkaAddButtonLabel: String(data?.mengkaAddButtonLabel || '添加QQ号'),
+      mengkaProtocolNote: String(data?.mengkaProtocolNote || '默认平板，平板不会顶手机QQ号，安卓会顶号，请知悉'),
+      mengkaEntryHint: String(data?.mengkaEntryHint || '列表里没有你的 QQ？发起后按提示完成验证（短信验证码 / 扫码）即可自动登录萌卡并绑定'),
     }
   }
   catch {
@@ -457,15 +501,18 @@ async function loadLoginSettings() {
       qqQrLogin: false,
       napCatEndpoint: '',
       napCatSignature: '',
+      tabs: Object.entries(LOGIN_TAB_LABELS).map(([key, label]) => ({ key, label, enabled: true })),
+      mengkaDefaultProtocol: 'tablet',
+      mengkaAddButtonLabel: '添加QQ号',
+      mengkaProtocolNote: '默认平板，平板不会顶手机QQ号，安卓会顶号，请知悉',
+      mengkaEntryHint: '列表里没有你的 QQ？发起后按提示完成验证（短信验证码 / 扫码）即可自动登录萌卡并绑定',
     }
   }
   finally {
     if (requestVersion === loginSettingsRequestVersion) {
       loginSettingsLoaded.value = true
-      if (activeLoginTab.value === 'wx_qr' && !loginSettings.value.wechatQrLogin)
-        activeLoginTab.value = 'code'
-      if (activeLoginTab.value === 'qq_qr' && !loginSettings.value.qqQrLogin)
-        activeLoginTab.value = 'code'
+      if (activeLoginTab.value !== fallbackLoginTab())
+        activeLoginTab.value = fallbackLoginTab()
       if (activeLoginTab.value === 'qq_qr' && loginSettings.value.qqQrLogin && !qqTaskId.value)
         void startQqLogin()
     }
@@ -632,7 +679,7 @@ async function pollWxLogin(taskId: string, flowVersion: number) {
 
 async function startWxLogin() {
   if (!wechatQrLoginEnabled.value) {
-    activeLoginTab.value = 'code'
+    activeLoginTab.value = fallbackLoginTab()
     return
   }
   resetWxLogin()
@@ -828,7 +875,7 @@ async function pollQqLogin(taskId: string, flowVersion: number) {
 
 async function startQqLogin() {
   if (!qqQrLoginEnabled.value) {
-    activeLoginTab.value = 'code'
+    activeLoginTab.value = fallbackLoginTab()
     return
   }
   resetQqLogin()
@@ -885,12 +932,12 @@ async function loadCaptureConfig() {
     const response = await api.get('/api/capture/config', { skipErrorToast: true } as any)
     captureEnabled.value = response.data?.ok === true && response.data.data?.enabled === true
     if (!captureEnabled.value && activeLoginTab.value === 'capture')
-      activeLoginTab.value = 'code'
+      activeLoginTab.value = fallbackLoginTab()
   }
   catch {
     captureEnabled.value = false
     if (activeLoginTab.value === 'capture')
-      activeLoginTab.value = 'code'
+      activeLoginTab.value = fallbackLoginTab()
   }
 }
 
@@ -1020,7 +1067,7 @@ watch(() => props.show, (newVal) => {
     captureAccountName.value = props.editData?.name || ''
     capturePlatform.value = props.editData?.platform === 'wx' ? 'wx' : 'qq'
     captureHelpMode.value = localStorage.getItem(CAPTURE_SUCCESS_STORAGE_KEY) === '1' ? 'daily' : 'first'
-    activeLoginTab.value = 'code'
+    activeLoginTab.value = fallbackLoginTab()
     resetWxLogin()
     mengkaLogin.reset()
     void loadLoginSettings()
@@ -1041,18 +1088,18 @@ watch(() => props.show, (newVal) => {
 
 watch(activeLoginTab, (tab) => {
   if (tab === 'capture' && !captureEnabled.value) {
-    activeLoginTab.value = 'code'
+    activeLoginTab.value = fallbackLoginTab()
     return
   }
   if (tab === 'wx_qr' && wechatQrLoginEnabled.value && !wxTaskId.value)
     void startWxLogin()
   else if (tab === 'wx_qr' && !wechatQrLoginEnabled.value)
-    activeLoginTab.value = 'code'
+    activeLoginTab.value = fallbackLoginTab()
   else if (tab === 'qq_qr') {
     if (qqQrLoginEnabled.value && !qqTaskId.value)
       void startQqLogin()
     else if (!qqQrLoginEnabled.value)
-      activeLoginTab.value = 'code'
+      activeLoginTab.value = fallbackLoginTab()
   }
   else if (tab === 'mengka' && !mengkaLoaded.value) {
     void loadMengkaState()
@@ -1107,20 +1154,8 @@ onBeforeUnmount(() => {
         </div>
 
         <NTabs v-if="loginSettingsLoaded" v-model:value="activeLoginTab" class="mb-4" type="line">
-          <NTab name="code">
-            输入 Code 登录
-          </NTab>
-          <NTab v-if="wechatQrLoginEnabled" name="wx_qr">
-            微信扫码登录
-          </NTab>
-          <NTab v-if="qqQrLoginEnabled" name="qq_qr">
-            QQ扫码登录
-          </NTab>
-          <NTab v-if="mengkaEnabled" name="mengka">
-            萌卡登录
-          </NTab>
-          <NTab v-if="captureEnabled" name="capture">
-            抓包登录
+          <NTab v-for="tab in visibleLoginTabs" :key="tab.key" :name="tab.key">
+            {{ tab.label }}
           </NTab>
         </NTabs>
 
@@ -1246,7 +1281,7 @@ onBeforeUnmount(() => {
               我的萌卡 QQ（点击选择后一键授权；离线可重新登录）
             </p>
             <div v-if="mengkaListBots.length === 0" class="rounded-xl p-3 text-xs opacity-60" style="background: rgba(127, 127, 127, 0.08)">
-              还没有萌卡账号，点下方「扫码登录新 QQ」添加
+              还没有萌卡账号，点下方「{{ loginSettings.mengkaAddButtonLabel }}」添加
             </div>
             <div v-else class="space-y-2">
               <div
@@ -1311,10 +1346,10 @@ onBeforeUnmount(() => {
           <div class="border-t pt-3" style="border-color: color-mix(in srgb, var(--theme-text) 12%, transparent)">
               <template v-if="mengkaLoginMode === 'add' && mengkaLogin.step === 'idle'">
                 <BaseButton variant="outline" block @click="openMengkaAdd">
-                  扫码登录新 QQ
+                  {{ loginSettings.mengkaAddButtonLabel }}
                 </BaseButton>
                 <p class="mt-1 text-xs opacity-60">
-                  列表里没有你的 QQ？发起后按提示完成验证（短信验证码 / 扫码）即可自动登录萌卡并绑定
+                  {{ loginSettings.mengkaEntryHint }}
                 </p>
               </template>
               <MengkaLoginPanel
@@ -1322,6 +1357,8 @@ onBeforeUnmount(() => {
                 :login="mengkaLogin"
                 :mode="mengkaLoginMode"
                 :relogin-bot="mengkaReloginBot"
+                :default-protocol="loginSettings.mengkaDefaultProtocol"
+                :protocol-note="loginSettings.mengkaProtocolNote"
                 @close="closeMengkaLoginPanel"
               />
             </div>

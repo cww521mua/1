@@ -183,11 +183,30 @@ export interface UIConfig {
   theme: 'light' | 'dark';
 }
 
+export interface LoginTabConfig {
+  /** 标签 key：code | wx_qr | qq_qr | mengka | capture */
+  key: string;
+  /** 显示标题 */
+  label: string;
+  /** 是否显示该登录方式 */
+  enabled: boolean;
+}
+
 export interface LoginSettings {
   wechatQrLogin: boolean;
   qqQrLogin: boolean;
   napCatEndpoint: string;
   napCatSignature: string;
+  /** 添加账号弹窗登录方式标签（数组顺序即显示顺序，enabled 控制显隐） */
+  tabs: LoginTabConfig[];
+  /** 萌卡登录默认协议：tablet=平板（默认，不顶手机在线）、phone=手机 */
+  mengkaDefaultProtocol: 'tablet' | 'phone';
+  /** 萌卡页签「添加QQ号」入口按钮文字 */
+  mengkaAddButtonLabel: string;
+  /** 萌卡登录协议说明 */
+  mengkaProtocolNote: string;
+  /** 萌卡登录入口提示（列表里没有你的 QQ…） */
+  mengkaEntryHint: string;
 }
 
 export interface DeviceInfo {
