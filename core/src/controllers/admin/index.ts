@@ -19,6 +19,7 @@ const userStore = require('../../models/user-store');
 const { createAdminContext } = require('./context');
 const { mountAuthRoutes } = require('./auth-routes');
 const { mountCardRoutes } = require('./card-routes');
+const { mountServerStatusRoutes } = require('./server-status-routes');
 const { mountAdminUserRoutes } = require('./user-routes');
 const { mountAccountRoutes } = require('./account-routes');
 const { mountMengkaRoutes } = require('./mengka-routes');
@@ -171,6 +172,7 @@ function startAdminServer(dataProvider: any): void {
     // Mount route modules
     mountAuthRoutes(app, ctx);
     mountCardRoutes(app, ctx);
+    mountServerStatusRoutes(app, ctx);
     mountAdminUserRoutes(app, ctx);
     mountWxLoginRoutes(app, ctx);
     mountQqLoginRoutes(app, ctx);
