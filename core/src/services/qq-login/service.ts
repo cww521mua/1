@@ -48,7 +48,7 @@ function napCatErrorMessage(data: any): string {
         case 'INVALID_SIGNATURE':
             return 'NapCat 接口签名无效，请检查配置';
         case 'WORKFLOW_BUSY':
-            return 'NapCat 登录工作流繁忙，请稍后重试';
+            return '前方有人扫码，请稍后再试';
         case 'LOGIN_REQUIRED':
             return 'QQ 登录尚未确认，请先完成扫码确认';
         case 'LOGOUT_REQUIRED':
