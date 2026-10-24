@@ -66,6 +66,7 @@ const DEFAULT_CAPTURE_CONFIG: CaptureConfig = {
 const DEFAULT_CARD_SETTINGS: CardSettings = {
     enabled: false,
     accountLimit: 0,
+    trialEnabled: false,
 };
 
 const DEFAULT_BRAND: BrandConfig = {
@@ -584,6 +585,7 @@ function loadGlobalConfig(): void {
                 globalConfig.cardSettings = {
                     enabled: data.cardSettings.enabled === true,
                     accountLimit: Math.max(0, Number.parseInt(data.cardSettings.accountLimit, 10) || 0),
+                    trialEnabled: data.cardSettings.trialEnabled === true,
                 };
             }
 

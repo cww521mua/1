@@ -98,6 +98,28 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  async function fetchTrialStatus() {
+    try {
+      const res = await api.get('/api/register/trial-status', { skipErrorToast: true } as any)
+      if (res.data?.ok && res.data.data)
+        return { enabled: !!res.data.data.enabled, remaining: Number(res.data.data.remaining || 0) }
+      return { enabled: false, remaining: 0 }
+    }
+    catch {
+      return { enabled: false, remaining: 0 }
+    }
+  }
+
+  async function registerTrial(username: string, password: string) {
+    try {
+      const res = await api.post('/api/register/trial', { username, password }, { skipErrorToast: true } as any)
+      return res.data
+    }
+    catch (error: any) {
+      return { ok: false, error: getApiErrorMessage(error, '领取失败') }
+    }
+  }
+
   async function fetchReferralInfo(code: string) {
     try {
       const res = await api.get('/api/register/referral-info', { params: { code } , skipErrorToast: true } as any)
@@ -163,6 +185,8 @@ export const useUserStore = defineStore('user', () => {
     login,
     register,
     registerReferral,
+    registerTrial,
+    fetchTrialStatus,
     fetchReferralInfo,
     renew,
     logout,

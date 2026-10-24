@@ -19,7 +19,8 @@ const brandStore = useBrandStore()
 const brand = computed(() => brandStore.brand)
 const route = useRoute()
 const mode = ref<'login' | 'register'>(props.initialMode === 'register' ? 'register' : 'login')
-const registerVia = ref<'card' | 'referral'>('card')
+const registerVia = ref<'card' | 'referral' | 'trial'>('card')
+const trialStatus = ref<{ enabled: boolean, remaining: number }>({ enabled: false, remaining: 0 })
 const refInfo = ref<{ username: string, isAgent: boolean } | null>(null)
 const refInput = ref('')
 const username = ref('')
@@ -84,12 +85,25 @@ const cardCodeValid = computed(() => {
 
 const refCodeValid = computed(() => {
   const code = refInput.value.trim().toUpperCase()
-  if (!code || registerVia.value === 'referral')
+  if (!code || registerVia.value !== 'card')
     return { valid: true, message: '' }
   if (!/^[A-Z0-9]{8}$/.test(code))
     return { valid: false, message: '推广码为 8 位大写字母或数字' }
   return { valid: true, message: '' }
 })
+
+// 注册页试用入口：开关开启且还有未使用的试用卡时显示
+const trialAvailable = computed(() => trialStatus.value.enabled && trialStatus.value.remaining > 0)
+
+async function fetchTrialStatus() {
+  trialStatus.value = await userStore.fetchTrialStatus()
+}
+
+function switchVia(next: 'card' | 'trial') {
+  registerVia.value = next
+  error.value = ''
+  success.value = ''
+}
 
 function validateForm(): boolean {
   if (!username.value) {
@@ -142,6 +156,7 @@ function switchMode(next: 'login' | 'register') {
       registerVia.value = 'card'
       refInput.value = ''
     }
+    void fetchTrialStatus()
   }
   else {
     refInput.value = ''
@@ -195,6 +210,25 @@ async function handleSubmit() {
       else {
         error.value = result.error || '注册失败'
       }
+      return
+    }
+
+    if (mode.value === 'register' && registerVia.value === 'trial') {
+      const result = await userStore.registerTrial(username.value.trim(), password.value)
+      if (result.ok) {
+        success.value = '试用领取成功，已获得 1 小时体验，请登录'
+        password.value = ''
+        confirmPassword.value = ''
+        setTimeout(() => {
+          mode.value = 'login'
+          registerVia.value = 'card'
+          success.value = ''
+        }, 1600)
+      }
+      else {
+        error.value = result.error || '领取失败'
+      }
+      void fetchTrialStatus()
       return
     }
 
@@ -267,6 +301,7 @@ async function handleSubmit() {
 
 onMounted(() => {
   void applyReferralFromQuery()
+  void fetchTrialStatus()
   void brandStore.load()
 })
 </script>
@@ -314,6 +349,21 @@ onMounted(() => {
             邀请人：<strong>{{ refInfo?.username || '-' }}</strong>
             <template v-if="refInfo?.isAgent">（代理）</template>
             <br>注册即赠送 1 小时体验，使用 30 天及以上卡密续费后邀请人获得奖励
+          </div>
+        </div>
+
+        <div
+          v-if="mode === 'register' && registerVia === 'trial'"
+          class="message success-message"
+          role="status"
+        >
+          <span class="i-carbon-idea" />
+          <div>
+            <strong>试用注册</strong>：免费领取 1 小时体验时长，每个 IP 仅限领取一次
+            <br>
+            <button type="button" class="trial-back-link" @click="switchVia('card')">
+              使用卡密注册，获得更多时长 →
+            </button>
           </div>
         </div>
 
@@ -379,24 +429,46 @@ onMounted(() => {
               <span class="i-carbon-shopping-cart" />
               {{ brand.purchaseText }}
             </a>
+            <button
+              v-if="trialAvailable"
+              type="button"
+              class="trial-entry"
+              @click="switchVia('trial')"
+            >
+              <span class="i-carbon-gift" />
+              没有卡密？免费领取 1 小时试用（剩余 {{ trialStatus.remaining }} 个名额）
+            </button>
           </div>
 
-          <div class="form-group">
+          <div v-if="registerVia !== 'card' && registerVia !== 'trial'" class="form-group">
             <label class="form-label" for="ref-code">
               <span class="i-carbon-connect" />
-              推广码<span v-if="registerVia === 'card'">（选填）</span>
+              推广码
             </label>
             <BaseInput
               id="ref-code"
               v-model="refInput"
               type="text"
-              :disabled="registerVia === 'referral'"
-              :placeholder="registerVia === 'card' ? '填写邀请人的推广码，可不填' : '来自推广链接'"
+              disabled
+              placeholder="来自推广链接"
+            />
+          </div>
+
+          <div v-if="registerVia === 'card'" class="form-group">
+            <label class="form-label" for="ref-code">
+              <span class="i-carbon-connect" />
+              推广码（选填）
+            </label>
+            <BaseInput
+              id="ref-code"
+              v-model="refInput"
+              type="text"
+              placeholder="填写邀请人的推广码，可不填"
             />
             <p v-if="refInput && !refCodeValid.valid" class="form-hint error">
               {{ refCodeValid.message }}
             </p>
-            <p v-if="registerVia === 'card'" class="form-hint">
+            <p class="form-hint">
               填写推广码并使用 30 天及以上卡密注册，你会额外获得 2 天时长，邀请人获得 5 天时长
             </p>
           </div>
@@ -417,8 +489,8 @@ onMounted(() => {
 
         <BaseButton type="submit" variant="primary" block :loading="loading" class="submit-btn">
           <span v-if="!loading" class="inline-flex items-center gap-2">
-            <span :class="mode === 'login' ? 'i-carbon-login' : 'i-carbon-user-follow'" />
-            {{ mode === 'login' ? '登录' : '注册' }}
+            <span :class="mode === 'login' ? 'i-carbon-login' : registerVia === 'trial' ? 'i-carbon-gift' : 'i-carbon-user-follow'" />
+            {{ mode === 'login' ? '登录' : registerVia === 'trial' ? '领取试用并注册' : '注册' }}
           </span>
         </BaseButton>
       </form>
@@ -646,6 +718,37 @@ onMounted(() => {
 
 .purchase-link:hover {
   text-decoration: underline;
+}
+
+.trial-entry {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  color: var(--ui-primary);
+  font-size: 12px;
+  font-weight: 600;
+  background: transparent;
+  cursor: pointer;
+}
+
+.trial-entry:hover {
+  text-decoration: underline;
+}
+
+.trial-back-link {
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  color: var(--ui-primary);
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: underline;
+  background: transparent;
+  cursor: pointer;
 }
 
 @media (max-width: 480px) {

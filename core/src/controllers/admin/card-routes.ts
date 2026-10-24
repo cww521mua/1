@@ -17,6 +17,11 @@ function normalizeCardInput(body: Record<string, any>): { description: string; o
     const description = String(body.description || '').trim();
     if (!description) throw new Error('请输入卡密描述');
 
+    // 试用卡密：固定 1 小时、purpose=trial，仅限注册页一键领取
+    if (body.purpose === 'trial') {
+        return { description, options: { type: 'time', purpose: 'trial', durationValue: 1, durationUnit: 'hour' } };
+    }
+
     const type = body.type === 'quota' ? 'quota' : 'time';
     if (type === 'quota') {
         const value = Number(body.value ?? body.durationValue ?? body.days);
@@ -80,6 +85,7 @@ function mountCardRoutes(app: Application, _ctx: AdminContext): void {
             const body = (req.body && typeof req.body === 'object') ? req.body : {};
             const current = store.getCardSettings();
             const enabled = body.enabled !== undefined ? body.enabled === true : current.enabled;
+            const trialEnabled = body.trialEnabled !== undefined ? body.trialEnabled === true : current.trialEnabled;
 
             // 开启管控时把上限抬到不低于存量账号数，保证已有账号不受影响。
             let accountLimit = body.accountLimit !== undefined && body.accountLimit !== null
@@ -89,8 +95,8 @@ function mountCardRoutes(app: Application, _ctx: AdminContext): void {
                 accountLimit = getAccountCount();
             }
 
-            const saved = store.setCardSettings({ enabled, accountLimit });
-            adminLogger.info('更新卡密设置', { enabled: saved.enabled, accountLimit: saved.accountLimit });
+            const saved = store.setCardSettings({ enabled, accountLimit, trialEnabled });
+            adminLogger.info('更新卡密设置', { enabled: saved.enabled, accountLimit: saved.accountLimit, trialEnabled: saved.trialEnabled });
             res.json({ ok: true, data: saved });
         } catch (e: any) {
             handleApiError(res, e);

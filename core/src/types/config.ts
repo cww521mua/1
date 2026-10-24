@@ -112,6 +112,8 @@ export interface CardSettings {
   enabled: boolean;
   /** 实例级游戏账号数量上限；额度卡密核销后自动累加。 */
   accountLimit: number;
+  /** 注册页试用领取开关：开启后注册页可一键领取 1 小时试用。 */
+  trialEnabled: boolean;
 }
 
 export interface BrandConfig {

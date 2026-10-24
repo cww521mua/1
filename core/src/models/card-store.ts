@@ -26,6 +26,8 @@ interface CardRecord {
     code: string;
     description: string;
     type: 'time' | 'quota';
+    /** 试用标记：trial=仅限注册页一键领取，不能用于续费/普通注册。 */
+    purpose?: 'trial';
     /** 时间卡：折算天数；额度卡：等于 value。 */
     days: number;
     durationValue: number;
@@ -137,6 +139,7 @@ function normalizeCard(raw: any): CardRecord {
         code: code || generateCardCode(),
         description: String(source.description || '').trim(),
         type,
+        purpose: source.purpose === 'trial' ? 'trial' : undefined,
         days: type === 'quota' ? (value as number) : Number(duration?.days ?? 0),
         durationValue: duration?.durationValue ?? 0,
         durationUnit: duration?.durationUnit ?? 'day',
@@ -189,8 +192,9 @@ function getCardByCode(code: unknown): CardRecord | null {
 }
 
 function createCard(description: unknown, options: Record<string, unknown> = {}): CardRecord {
-    const type: CardRecord['type'] = options.type === 'quota' ? 'quota' : 'time';
-    const isPermanent = type === 'time' && (options.isPermanent === true || Number(options.durationValue) === -1);
+    const isTrial = options.purpose === 'trial';
+    const type: CardRecord['type'] = options.type === 'quota' && !isTrial ? 'quota' : 'time';
+    const isPermanent = type === 'time' && !isTrial && (options.isPermanent === true || Number(options.durationValue) === -1);
     const data = loadCards();
 
     let card: CardRecord;
@@ -218,8 +222,10 @@ function createCard(description: unknown, options: Record<string, unknown> = {})
             code: generateCardCode(),
             description,
             type,
-            durationValue: options.durationValue,
-            durationUnit: options.durationUnit,
+            // 试用卡固定 1 小时
+            durationValue: isTrial ? 1 : options.durationValue,
+            durationUnit: isTrial ? 'hour' : options.durationUnit,
+            purpose: isTrial ? 'trial' : undefined,
             enabled: true,
             createdAt: Date.now(),
         });
@@ -286,12 +292,41 @@ function markCardUsed(card: CardRecord, accountId: string, accountName: string, 
 
 /**
  * 校验卡密可用于核销；返回错误文案或 null。
+ * 试用卡仅限注册页一键领取，普通注册/续费/核销一律拒绝。
  */
 function validateCardForUse(card: CardRecord | null): string | null {
     if (!card) return '卡密不存在';
+    if (card.purpose === 'trial') return '试用卡密仅限注册页领取，不能在此使用';
     if (!card.enabled) return '卡密已被禁用';
     if (card.usedBy) return '卡密已被使用';
     return null;
+}
+
+function getTrialSettings() {
+    const settings: CardSettings = sharedState.globalConfig.cardSettings;
+    return { trialEnabled: settings.trialEnabled === true };
+}
+
+function countAvailableTrialCards(): number {
+    return loadCards().cards.filter(card => card.purpose === 'trial' && card.enabled && !card.usedBy).length;
+}
+
+/** 试用注册状态：开关 + 剩余可领取的试用卡数量（公开接口用）。 */
+function getTrialStatus(): { enabled: boolean, remaining: number } {
+    const { trialEnabled } = getTrialSettings();
+    return { enabled: trialEnabled, remaining: countAvailableTrialCards() };
+}
+
+/** 取一张可领取的试用卡（未使用、启用中，按创建时间最早的先发）。 */
+function findTrialCard(): CardRecord | null {
+    return loadCards().cards
+        .filter(card => card.purpose === 'trial' && card.enabled && !card.usedBy)
+        .sort((a, b) => a.createdAt - b.createdAt)[0] || null;
+}
+
+/** 试用注册是否开启（user-store 注册流程校验用）。 */
+function isTrialRegistrationEnabled(): boolean {
+    return getTrialSettings().trialEnabled;
 }
 
 /**
@@ -396,6 +431,10 @@ module.exports = {
     deleteCard,
     deleteCardsBatch,
     validateCardForUse,
+    getTrialStatus,
+    countAvailableTrialCards,
+    findTrialCard,
+    isTrialRegistrationEnabled,
     consumeQuotaCard,
     previewTimeCardExpiresAt,
     useCard,

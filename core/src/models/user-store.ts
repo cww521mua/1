@@ -388,6 +388,18 @@ interface ReferralIpRecord {
     at: number;
 }
 
+const TRIAL_IPS_FILE: string = getDataFile('trial-ips.json');
+
+function loadTrialIps(): Record<string, ReferralIpRecord> {
+    const raw = readJsonFile(TRIAL_IPS_FILE, () => ({}));
+    return raw && typeof raw === 'object' ? raw as Record<string, ReferralIpRecord> : {};
+}
+
+function saveTrialIps(ips: Record<string, ReferralIpRecord>): void {
+    ensureDataDir();
+    writeJsonFileAtomic(TRIAL_IPS_FILE, ips);
+}
+
 function loadReferralIps(): Record<string, ReferralIpRecord> {
     const raw = readJsonFile(REFERRAL_IPS_FILE, () => ({}));
     return raw && typeof raw === 'object' ? raw as Record<string, ReferralIpRecord> : {};
@@ -396,6 +408,62 @@ function loadReferralIps(): Record<string, ReferralIpRecord> {
 function saveReferralIps(ips: Record<string, ReferralIpRecord>): void {
     ensureDataDir();
     writeJsonFileAtomic(REFERRAL_IPS_FILE, ips);
+}
+
+/**
+ * 一键领取试用：从试用卡池分配一张 1 小时试用卡完成注册；每个 IP 仅允许领取一次。
+ * 开关（cardSettings.trialEnabled）关闭时直接拒绝。
+ */
+function registerTrialUser(username: unknown, password: unknown, ip: string = 'unknown'): any {
+    if (!cardStore.isTrialRegistrationEnabled()) {
+        return { ok: false, error: '试用领取未开放' };
+    }
+
+    const name = String(username || '').trim();
+    const data = loadUsers();
+
+    const usernameError = validateNewUsername(name, data.users);
+    if (usernameError) return { ok: false, error: usernameError };
+
+    const strength = security.validatePasswordStrength(String(password || ''));
+    if (!strength.valid) return { ok: false, error: strength.errors.join('；') };
+
+    const ipKey = String(ip || 'unknown').trim();
+    const ips = loadTrialIps();
+    if (ips[ipKey]) {
+        return { ok: false, error: '该网络已领取过试用，请直接登录或使用卡密注册' };
+    }
+
+    const card = cardStore.findTrialCard();
+    if (!card) return { ok: false, error: '试用名额已领完，请联系管理员' };
+
+    const now = Date.now();
+    const duration = cardStore.normalizeTimeDuration(card);
+    const expiresAt = cardStore.computeNextExpiresAt(undefined, duration, now);
+    const user: UserRecord = {
+        username: name,
+        password: security.hashPassword(String(password)),
+        role: 'user',
+        enabled: true,
+        card: {
+            code: card.code,
+            description: card.description || '1 小时试用',
+            expiresAt,
+            isPermanent: false,
+        },
+        accountLimit: DEFAULT_USER_ACCOUNT_LIMIT,
+        createdAt: now,
+        updatedAt: now,
+    };
+
+    data.users.push(user);
+    saveUsers(data);
+    cardStore.markCardUsed(card, name, name, now);
+    ips[ipKey] = { username: name, at: now };
+    saveTrialIps(ips);
+    clearUserFailedAttempts(name);
+
+    return { ok: true, user: toPublicUser(user) };
 }
 
 /**
@@ -618,6 +686,7 @@ module.exports = {
     DEFAULT_USER_ACCOUNT_LIMIT,
     USERS_FILE,
     registerUser,
+    registerTrialUser,
     registerUserByReferral,
     validateUser,
     renewUser,

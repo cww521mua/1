@@ -9,6 +9,7 @@ const { createModuleLogger } = require('../../services/logger');
 const store = require('../../models/store');
 const adminStore = require('../../models/admin-store');
 const userStore = require('../../models/user-store');
+const cardStore = require('../../models/card-store');
 
 const {
     getClientIp,
@@ -23,7 +24,7 @@ const {
 const adminLogger = createModuleLogger('admin');
 
 // 公开接口（无需登录）
-const PUBLIC_API_PATHS = new Set(['/login', '/register', '/register/referral', '/register/referral-info', '/branding', '/branding/icon', '/home-page', '/game-version']);
+const PUBLIC_API_PATHS = new Set(['/login', '/register', '/register/referral', '/register/referral-info', '/register/trial', '/register/trial-status', '/branding', '/branding/icon', '/home-page', '/game-version']);
 
 function issueIdentityToken(ctx: AdminContext, username: string, role: 'admin' | 'user'): string {
     const token = issueToken();
@@ -109,6 +110,27 @@ function mountAuthRoutes(app: Application, ctx: AdminContext): void {
             return res.status(400).json({ ok: false, error: result.error });
         }
         adminLogger.info('卡密注册成功', { username: result.user.username, referredBy: result.user.referredBy || '', ip: clientIp });
+        return res.json({ ok: true, data: { username: result.user.username } });
+    });
+
+    // 试用状态（公开接口）：注册页判断是否展示「领取 1 小时试用」入口
+    app.get('/api/register/trial-status', (_req: Request, res: Response) => {
+        res.json({ ok: true, data: cardStore.getTrialStatus() });
+    });
+
+    // 试用领取（公开接口）：免卡密一键注册 1 小时试用，从管理员生成的试用卡池分配，每个 IP 仅一次
+    app.post('/api/register/trial', (req: Request, res: Response) => {
+        const { username, password } = req.body || {};
+        if (!username || !password) {
+            return res.status(400).json({ ok: false, error: '请填写用户名和密码' });
+        }
+        const clientIp = getClientIp(req);
+        const result = userStore.registerTrialUser(String(username), String(password), clientIp);
+        if (!result.ok) {
+            adminLogger.warn('试用领取失败', { username: String(username), error: result.error, ip: clientIp });
+            return res.status(400).json({ ok: false, error: result.error });
+        }
+        adminLogger.info('试用领取成功', { username: result.user.username, ip: clientIp });
         return res.json({ ok: true, data: { username: result.user.username } });
     });
 

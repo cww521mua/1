@@ -41,6 +41,7 @@ function normalizeCardSettings(input: unknown): CardSettings {
     return {
         enabled: src.enabled === true,
         accountLimit: Number.isFinite(accountLimitRaw) && accountLimitRaw > 0 ? accountLimitRaw : DEFAULT_CARD_SETTINGS.accountLimit,
+        trialEnabled: src.trialEnabled === true,
     };
 }
 
@@ -291,6 +292,7 @@ function setCardSettings(cfg: Partial<CardSettings> | undefined): CardSettings {
         accountLimit: src.accountLimit !== undefined && src.accountLimit !== null
             ? Math.max(0, Number.parseInt(src.accountLimit, 10) || 0)
             : current.accountLimit,
+        trialEnabled: src.trialEnabled !== undefined ? src.trialEnabled === true : current.trialEnabled,
     };
     globalConfig.cardSettings = next;
     saveGlobalConfig();

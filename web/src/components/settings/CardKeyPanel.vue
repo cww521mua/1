@@ -14,6 +14,7 @@ import {
   formatCardDate,
   formatCardValue,
   getCardTypeLabel,
+  isTrialCard,
   useCardStore,
   type CardRecord,
 } from '@/stores/card'
@@ -32,11 +33,32 @@ const showEnableConfirm = ref(false)
 
 const settingsSummary = computed(() => {
   const { settings, accountCount, availableTimeCards } = overview.value
+  const trialPart = settings.trialEnabled
+    ? `；注册页试用领取已开启，剩余可用试用卡 ${availableTrialCards.value} 个`
+    : ''
   if (!settings.enabled) {
-    return `当前未启用卡密管控，账号数量不受限制。可用时间卡密 ${availableTimeCards} 个。`
+    return `当前未启用卡密管控，账号数量不受限制。可用时间卡密 ${availableTimeCards} 个${trialPart}。`
   }
-  return `已启用卡密管控：账号 ${accountCount}/${settings.accountLimit}，新增超出上限的账号需核销额度卡密；可用时间卡密 ${availableTimeCards} 个。`
+  return `已启用卡密管控：账号 ${accountCount}/${settings.accountLimit}，新增超出上限的账号需核销额度卡密；可用时间卡密 ${availableTimeCards} 个${trialPart}。`
 })
+
+const availableTrialCards = computed(() =>
+  cards.value.filter(card => isTrialCard(card) && !card.usedBy && card.enabled).length,
+)
+
+async function handleTrialEnabledChange(value: boolean | undefined) {
+  if (value === undefined)
+    return
+  settingsSaving.value = true
+  try {
+    const result = await cardStore.saveCardSettings({ trialEnabled: value })
+    if (result.ok)
+      toast.success(value ? '已开启注册页试用领取' : '已关闭注册页试用领取')
+  }
+  finally {
+    settingsSaving.value = false
+  }
+}
 
 async function handleSaveSettings() {
   settingsSaving.value = true
@@ -92,6 +114,7 @@ const creating = ref(false)
 const cardTypeOptions = [
   { label: '时间卡（账号续期）', value: 'time' },
   { label: '额度卡（提升账号上限）', value: 'quota' },
+  { label: '试用卡（注册页领取 · 固定1小时）', value: 'trial' },
 ]
 
 async function handleCreateCard() {
@@ -114,7 +137,7 @@ async function handleCreateCard() {
 // ==================== 列表筛选 ====================
 const searchQuery = ref('')
 const statusFilter = ref<'all' | 'used' | 'unused'>('all')
-const typeFilter = ref<'all' | 'time' | 'quota'>('all')
+const typeFilter = ref<'all' | 'time' | 'quota' | 'trial'>('all')
 
 const statusOptions = [
   { label: '全部状态', value: 'all' },
@@ -126,6 +149,7 @@ const typeOptions = [
   { label: '全部类型', value: 'all' },
   { label: '时间卡', value: 'time' },
   { label: '额度卡', value: 'quota' },
+  { label: '试用卡', value: 'trial' },
 ]
 
 const filteredCards = computed(() => {
@@ -140,8 +164,14 @@ const filteredCards = computed(() => {
   }
   if (statusFilter.value !== 'all')
     result = result.filter(card => statusFilter.value === 'used' ? !!card.usedBy : !card.usedBy)
-  if (typeFilter.value !== 'all')
-    result = result.filter(card => card.type === typeFilter.value)
+  if (typeFilter.value !== 'all') {
+    if (typeFilter.value === 'trial')
+      result = result.filter(card => isTrialCard(card))
+    else if (typeFilter.value === 'time')
+      result = result.filter(card => card.type === 'time' && !isTrialCard(card))
+    else
+      result = result.filter(card => card.type === 'quota')
+  }
   return result
 })
 
@@ -325,13 +355,23 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="grid grid-cols-1 items-start gap-3 sm:grid-cols-3">
+      <div class="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div class="border border-gray-200 rounded-lg bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30">
           <BaseSwitch
             :model-value="overview.settings.enabled"
             label="启用卡密管控"
             @update:model-value="handleEnabledChange"
           />
+        </div>
+        <div class="border border-gray-200 rounded-lg bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30">
+          <BaseSwitch
+            :model-value="overview.settings.trialEnabled"
+            label="注册页试用领取"
+            @update:model-value="handleTrialEnabledChange"
+          />
+          <p class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+            开启后注册页可一键领取试用（每 IP 限一次）
+          </p>
         </div>
         <BaseInput
           v-model="localAccountLimit"
@@ -366,7 +406,7 @@ onMounted(async () => {
             生成卡密
           </h4>
           <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            时间卡为账号续期，额度卡提升账号数量上限；批量生成会自动导出文本文件
+            时间卡为账号续期，额度卡提升账号上限，试用卡供注册页领取（固定 1 小时）；批量生成会自动导出文本文件
           </p>
         </div>
       </div>
@@ -402,7 +442,7 @@ onMounted(async () => {
             <BaseSwitch v-model="newCardForm.isPermanent" label="永久卡" />
           </div>
         </template>
-        <template v-else>
+        <template v-else-if="newCardForm.type === 'quota'">
           <BaseInput
             v-model="newCardForm.value"
             type="number"
@@ -412,6 +452,9 @@ onMounted(async () => {
             placeholder="例如：1"
           />
         </template>
+        <div v-else class="border border-amber-200 rounded-lg bg-amber-50/70 p-3 text-xs text-amber-600 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-400">
+          试用卡固定 1 小时，仅供注册页一键领取，不能用于续费或核销
+        </div>
         <BaseInput
           v-model="newCardForm.count"
           type="number"
@@ -606,11 +649,13 @@ onMounted(async () => {
                   <span class="font-mono text-sm font-bold tracking-wider text-gray-900 dark:text-gray-100">{{ card.code }}</span>
                   <span
                     class="rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight"
-                    :class="card.type === 'quota'
-                      ? 'bg-violet-50 text-violet-600 dark:bg-violet-900/25 dark:text-violet-400'
-                      : 'bg-blue-50 text-blue-600 dark:bg-blue-900/25 dark:text-blue-400'"
+                    :class="card.purpose === 'trial'
+                      ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/25 dark:text-amber-400'
+                      : card.type === 'quota'
+                        ? 'bg-violet-50 text-violet-600 dark:bg-violet-900/25 dark:text-violet-400'
+                        : 'bg-blue-50 text-blue-600 dark:bg-blue-900/25 dark:text-blue-400'"
                   >
-                    {{ getCardTypeLabel(card) }} · {{ formatCardValue(card) }}
+                    {{ card.purpose === 'trial' ? '试用' : getCardTypeLabel(card) }} · {{ formatCardValue(card) }}
                   </span>
                   <span
                     v-if="card.usedBy"

@@ -20,11 +20,13 @@ export interface CardRecord {
   usedBy: string
   usedByName: string
   usedAt: number | null
+  purpose?: 'trial'
 }
 
 export interface CardSettings {
   enabled: boolean
   accountLimit: number
+  trialEnabled: boolean
 }
 
 export interface CardOverview {
@@ -33,9 +35,11 @@ export interface CardOverview {
   availableTimeCards: number
 }
 
+export type NewCardType = CardType | 'trial'
+
 export interface NewCardForm {
   description: string
-  type: CardType
+  type: NewCardType
   durationValue: number
   durationUnit: 'day' | 'hour'
   isPermanent: boolean
@@ -45,6 +49,10 @@ export interface NewCardForm {
 
 export function getCardTypeLabel(card: Pick<CardRecord, 'type'>) {
   return card.type === 'quota' ? '额度' : '时间'
+}
+
+export function isTrialCard(card: Pick<CardRecord, 'purpose'>) {
+  return card.purpose === 'trial'
 }
 
 export function formatCardValue(card: CardRecord) {
@@ -82,7 +90,7 @@ function createDefaultForm(): NewCardForm {
 export const useCardStore = defineStore('card', () => {
   const toast = useToastStore()
   const cards = ref<CardRecord[]>([])
-  const overview = ref<CardOverview>({ settings: { enabled: false, accountLimit: 0 }, accountCount: 0, availableTimeCards: 0 })
+  const overview = ref<CardOverview>({ settings: { enabled: false, accountLimit: 0, trialEnabled: false }, accountCount: 0, availableTimeCards: 0 })
   const loading = ref(false)
   const newCardForm = ref<NewCardForm>(createDefaultForm())
 
@@ -116,21 +124,27 @@ export const useCardStore = defineStore('card', () => {
     const description = payload.description.trim()
     if (!description)
       return { ok: false, error: '请输入卡密描述' }
-    if (payload.type === 'time' && !payload.isPermanent && Number(payload.durationValue) <= 0)
+    if (payload.type !== 'trial' && payload.type === 'time' && !payload.isPermanent && Number(payload.durationValue) <= 0)
       return { ok: false, error: '时间卡时长必须大于 0，永久卡请开启永久' }
     if (payload.type === 'quota' && Number(payload.value) <= 0)
       return { ok: false, error: '额度卡数量必须大于 0' }
 
     try {
-      const { data } = await api.post('/api/admin/cards', {
-        description,
-        type: payload.type,
-        durationValue: payload.type === 'time' ? (payload.isPermanent ? -1 : payload.durationValue) : undefined,
-        durationUnit: payload.type === 'time' ? payload.durationUnit : undefined,
-        isPermanent: payload.type === 'time' ? payload.isPermanent : undefined,
-        value: payload.type === 'quota' ? payload.value : undefined,
-        count: Math.min(Math.max(Number(payload.count) || 1, 1), 100),
-      })
+      const { data } = await api.post('/api/admin/cards', payload.type === 'trial'
+        ? {
+            description,
+            purpose: 'trial',
+            count: Math.min(Math.max(Number(payload.count) || 1, 1), 100),
+          }
+        : {
+            description,
+            type: payload.type,
+            durationValue: payload.type === 'time' ? (payload.isPermanent ? -1 : payload.durationValue) : undefined,
+            durationUnit: payload.type === 'time' ? payload.durationUnit : undefined,
+            isPermanent: payload.type === 'time' ? payload.isPermanent : undefined,
+            value: payload.type === 'quota' ? payload.value : undefined,
+            count: Math.min(Math.max(Number(payload.count) || 1, 1), 100),
+          })
       if (!data?.ok)
         return { ok: false, error: getApiErrorMessage(data, '创建卡密失败') }
       const created: CardRecord[] = Array.isArray(data.data) ? data.data : [data.data]
