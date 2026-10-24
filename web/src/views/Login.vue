@@ -436,7 +436,7 @@ onMounted(() => {
               @click="switchVia('trial')"
             >
               <span class="i-carbon-gift" />
-              没有卡密？免费领取 1 小时试用（剩余 {{ trialStatus.remaining }} 个名额）
+              免费领取 1 小时试用（剩余 {{ trialStatus.remaining }} 个名额）
             </button>
           </div>
 
@@ -530,6 +530,8 @@ onMounted(() => {
 .login-container.embedded {
   height: auto;
   max-height: min(78dvh, 720px);
+  /* 防止 flex stretch 把卡片压到容器高度、表单溢出卡片圆角背景 */
+  align-items: flex-start;
   padding: 0;
   overflow-y: auto;
   overflow-x: hidden;
