@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref, watch } from 'vue'
+import api from '@/api'
 import BaseButton from '@/components/ui/BaseButton.vue'
 import BaseInput from '@/components/ui/BaseInput.vue'
 import BaseSelect from '@/components/ui/BaseSelect.vue'
+import ConfirmModal from '@/components/ConfirmModal.vue'
+import { storeToRefs } from 'pinia'
+import { useUserStore } from '@/stores/user'
+import { useToastStore } from '@/stores/toast'
 
 /**
  * 萌卡 QQ 登录流程面板：idle 表单（添加/重登）→ 验证方式选择 → 短信/滑块/扫码 → 完成绑定。
@@ -78,6 +83,95 @@ async function applyDefaultProtocol() {
 
 onMounted(() => {
   void props.login.loadProtocols().then(() => applyDefaultProtocol())
+  if (props.mode !== 'relogin')
+    void fetchBots()
+})
+
+// ==================== 已登录的萌卡账号（管理列表） ====================
+const userStore = useUserStore()
+const { isAdmin } = storeToRefs(userStore)
+const toast = useToastStore()
+
+interface MengkaBotRow {
+  selfId: string
+  nickname: string
+  status: number
+  online: boolean
+  statusText: string
+  lastActiveMs: number
+  ownerId: string | null
+  canManage: boolean
+}
+
+const bots = ref<MengkaBotRow[]>([])
+const botsLoading = ref(false)
+const botsError = ref('')
+const deleteTarget = ref<MengkaBotRow | null>(null)
+const deleting = ref(false)
+
+async function fetchBots() {
+  botsLoading.value = true
+  botsError.value = ''
+  try {
+    const { data } = await api.get('/api/mengka/bots')
+    bots.value = data?.ok && Array.isArray(data.data?.bots) ? data.data.bots : []
+  }
+  catch {
+    botsError.value = '萌卡账号列表获取失败'
+  }
+  finally {
+    botsLoading.value = false
+  }
+}
+
+async function confirmDeleteBot() {
+  if (!deleteTarget.value)
+    return
+  deleting.value = true
+  try {
+    const { data } = await api.post('/api/mengka/bots/delete', { selfId: deleteTarget.value.selfId })
+    if (data?.ok) {
+      toast.success(`萌卡账号 ${deleteTarget.value.selfId} 已删除`)
+    }
+    else {
+      toast.error('删除萌卡账号失败')
+    }
+  }
+  catch {
+    toast.error('删除萌卡账号失败')
+  }
+  finally {
+    deleting.value = false
+    deleteTarget.value = null
+    void fetchBots()
+  }
+}
+
+function fmtLastActive(ms: number): string {
+  if (!ms)
+    return '—'
+  const diff = Date.now() - ms
+  if (diff < 60_000)
+    return '刚刚'
+  if (diff < 3_600_000)
+    return `${Math.floor(diff / 60_000)} 分钟前`
+  if (diff < 86_400_000)
+    return `${Math.floor(diff / 3_600_000)} 小时前`
+  return `${Math.floor(diff / 86_400_000)} 天前`
+}
+
+function statusDotClass(bot: MengkaBotRow): string {
+  if (bot.online)
+    return 'bg-emerald-500'
+  if (bot.status === 2)
+    return 'bg-amber-400 animate-pulse'
+  return 'bg-gray-300 dark:bg-gray-600'
+}
+
+/** 登录流程结束回到表单时刷新列表（含成功后的绑定变化） */
+watch(() => props.login.step, (step, prev) => {
+  if (props.mode !== 'relogin' && (step === 'idle' || step === 'form') && prev && prev !== step)
+    void fetchBots()
 })
 </script>
 
@@ -155,6 +249,79 @@ onMounted(() => {
         <BaseButton v-else variant="primary" :loading="login.loading" @click="login.start()">
           发起登录
         </BaseButton>
+      </div>
+
+      <!-- 已登录的萌卡账号（含离线），支持重登与删除 -->
+      <div v-if="mode !== 'relogin'" class="border-t pt-3 dark:border-gray-700">
+        <div class="flex items-center justify-between">
+          <div class="text-sm font-bold text-gray-900 dark:text-gray-100">
+            已登录的萌卡账号
+            <span v-if="bots.length" class="ml-1 text-xs font-normal opacity-60">共 {{ bots.length }} 个</span>
+          </div>
+          <BaseButton variant="ghost" size="sm" :loading="botsLoading" @click="fetchBots">
+            <span class="i-carbon-renew mr-1" />
+            刷新
+          </BaseButton>
+        </div>
+        <p v-if="botsError" class="mt-1 text-xs text-red-500">
+          {{ botsError }}
+        </p>
+        <p v-else-if="!botsLoading && !bots.length" class="mt-2 text-xs opacity-60">
+          暂无账号，通过上方表单登录后会显示在这里（含离线账号）
+        </p>
+        <div v-else class="mt-2 space-y-2">
+          <div
+            v-for="bot in bots"
+            :key="bot.selfId"
+            class="flex items-center justify-between gap-2 border border-gray-200 rounded-xl p-2.5 dark:border-gray-700"
+          >
+            <div class="flex min-w-0 items-center gap-2.5">
+              <span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="statusDotClass(bot)" />
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="truncate text-sm font-bold text-gray-900 dark:text-gray-100">{{ bot.nickname || bot.selfId }}</span>
+                  <span class="font-mono text-xs opacity-60">{{ bot.selfId }}</span>
+                  <span
+                    v-if="isAdmin && bot.ownerId"
+                    class="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                    style="background: rgba(67, 141, 99, 0.14); color: #36744f"
+                  >
+                    {{ bot.ownerId }}
+                  </span>
+                  <span
+                    v-if="!bot.ownerId && isAdmin"
+                    class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500 dark:bg-gray-700 dark:text-gray-400"
+                  >
+                    未绑定
+                  </span>
+                </div>
+                <div class="truncate text-xs opacity-60">
+                  {{ bot.statusText || (bot.online ? '在线' : '离线') }} · 最后活跃 {{ fmtLastActive(bot.lastActiveMs) }}
+                </div>
+              </div>
+            </div>
+            <div v-if="bot.canManage" class="flex shrink-0 gap-1">
+              <BaseButton
+                v-if="!bot.online"
+                variant="ghost"
+                size="sm"
+                title="重新登录"
+                @click="login.relogin(bot.selfId)"
+              >
+                <span class="i-carbon-renew" />
+              </BaseButton>
+              <BaseButton
+                variant="ghost"
+                size="sm"
+                class="text-red-500 dark:text-red-400"
+                title="删除该萌卡账号"
+                @click="deleteTarget = bot"
+              >
+                <span class="i-carbon-trash-can" />
+              </BaseButton>
+            </div>
+          </div>
+        </div>
       </div>
     </template>
 
@@ -335,5 +502,18 @@ onMounted(() => {
         </div>
       </div>
     </template>
+
+    <ConfirmModal
+      :show="!!deleteTarget"
+      :loading="deleting"
+      title="删除萌卡账号"
+      :message="deleteTarget
+        ? `确定要删除萌卡账号 ${deleteTarget.nickname || deleteTarget.selfId}（${deleteTarget.selfId}）吗？框架内的登录数据将被移除，面板绑定同时解除，此操作不可恢复！`
+        : ''"
+      confirm-text="删除"
+      type="danger"
+      @cancel="!deleting && (deleteTarget = null)"
+      @confirm="confirmDeleteBot"
+    />
   </div>
 </template>

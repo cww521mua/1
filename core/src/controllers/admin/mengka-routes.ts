@@ -29,6 +29,7 @@ const store = require('../../models/store');
 const userStore = require('../../models/user-store');
 const mengka = require('../../services/mengka-connector');
 const { normalizeLevelAccounts, filterLevelAccountsForOwner } = require('../../services/mengka-level-tasks');
+const { buildBotViews } = require('../../services/mengka-bots');
 const { getIdentity, isAdminIdentity, handleApiError } = require('./middleware');
 
 const mengkaLogger = require('../../services/logger').createModuleLogger('mengka');
@@ -866,6 +867,62 @@ function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
         } catch (e: any) {
             handleApiError(res, e);
         }
+    });
+
+    // 萌卡账号管理：框架账号列表（含离线），合并归属；管理员可见全部，普通用户仅限自己绑定的账号
+    app.get('/api/mengka/bots', (req: Request, res: Response) => {
+        (async () => {
+            if (!ensureMengkaEnabled(res)) return;
+            try {
+                const identity = getIdentity(ctx, req);
+                const bots = await mengka.getBots();
+                const views = buildBotViews(bots, store.getMengkaBindings(), {
+                    isAdmin: isAdminIdentity(identity),
+                    username: identity.username,
+                });
+                res.json({ ok: true, data: { bots: views } });
+            } catch (e: any) {
+                handleApiError(res, e);
+            }
+        })();
+    });
+
+    // 删除萌卡账号：框架删除 + 解除绑定 + 撤销授权（绑定本人或超管；未绑定账号仅超管可删）
+    app.post('/api/mengka/bots/delete', (req: Request, res: Response) => {
+        (async () => {
+            if (!ensureMengkaEnabled(res)) return;
+            const selfId = String(req.body?.selfId || '').trim();
+            if (!/^\d{5,12}$/.test(selfId)) {
+                return res.status(400).json({ ok: false, error: '无效的 QQ 号' });
+            }
+            const identity = getIdentity(ctx, req);
+            const binding = store.findMengkaBinding(selfId);
+            if (!isAdminIdentity(identity)) {
+                if (!binding || binding.owner !== identity.username) {
+                    return res.status(403).json({ ok: false, error: '无权删除该萌卡账号' });
+                }
+            }
+            try {
+                await mengka.callAction('delete_account', { self_id: Number(selfId) }, LOGIN_TIMEOUT_MS);
+            } catch (e: any) {
+                // 框架中不存在（如已手动删除）视为成功，继续清理面板侧数据
+                if (!/不存在|not\s*found/i.test(String(e?.message))) {
+                    return handleApiError(res, e);
+                }
+            }
+            if (binding) {
+                store.deleteMengkaBinding(selfId);
+            }
+            try {
+                mengka.callAction('set_account_access', {
+                    self_id: Number(selfId),
+                    client_type: 'android',
+                    enabled: false,
+                }, LEASE_TIMEOUT_MS).catch(() => { /* 撤授权失败不阻塞删除 */ });
+            } catch { /* ignore */ }
+            mengkaLogger.info('萌卡账号已删除', { selfId, by: identity.username });
+            res.json({ ok: true });
+        })();
     });
 }
 
