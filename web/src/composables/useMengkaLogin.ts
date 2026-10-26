@@ -1,4 +1,4 @@
-import { onBeforeUnmount, reactive, ref } from 'vue'
+import { onBeforeUnmount, reactive, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import api, { getApiErrorMessage } from '@/api'
 
@@ -57,6 +57,13 @@ export function useMengkaLogin(options: MengkaLoginOptions = {}) {
   const smsCode = ref('')
   const sliderResultUrl = ref('')
 
+  // 滑块验证弹窗与自动获取
+  let sliderPopup: Window | null = null
+  let sliderWatchTimer: ReturnType<typeof setInterval> | undefined
+  let pasteHandler: ((e: ClipboardEvent) => void) | null = null
+  const sliderPopupOpen = ref(false)
+  const sliderWatchNote = ref('')
+
   // 登录协议（add 模式可选）
   const protocols = ref<MengkaProtocol[]>([])
   const protocolId = ref(0)
@@ -70,6 +77,9 @@ export function useMengkaLogin(options: MengkaLoginOptions = {}) {
       clearTimeout(pollTimer)
       pollTimer = undefined
     }
+    stopSliderWatch()
+    closeSliderPopup()
+    sliderWatchNote.value = ''
     step.value = 'idle'
     qq.value = ''
     password.value = ''
@@ -442,16 +452,155 @@ export function useMengkaLogin(options: MengkaLoginOptions = {}) {
     }
   }
 
-  /** 解析滑块完成后的跳转 URL 并提交（ticket/randstr） */
+  /** 宽容解析滑块完成后的链接（query 与 hash 均尝试） */
+  function parseSliderTicket(raw: string): { ticket: string, randstr: string } | null {
+    const text = String(raw || '').trim()
+    if (!text)
+      return null
+    const pick = (key: string): string | null => {
+      try {
+        const u = new URL(text)
+        for (const source of [u.search, u.hash.replace(/^#/, '')]) {
+          const value = new URLSearchParams(source).get(key)
+          if (value)
+            return value
+        }
+      }
+      catch {
+        // 非完整 URL，走宽松正则
+      }
+      const loose = text.match(new RegExp(`[?&#&]${key}=([^&\\s#]+)`, 'i'))
+      return loose ? (loose[1] ?? null) : null
+    }
+    const decode = (value: string) => {
+      try {
+        return decodeURIComponent(value)
+      }
+      catch {
+        return value
+      }
+    }
+    const ticket = pick('ticket')
+    const randstr = pick('randstr')
+    if (!ticket || !randstr)
+      return null
+    return { ticket: decode(ticket), randstr: decode(randstr) }
+  }
+
+  function stopSliderWatch() {
+    if (sliderWatchTimer) {
+      clearInterval(sliderWatchTimer)
+      sliderWatchTimer = undefined
+    }
+    if (pasteHandler) {
+      window.removeEventListener('paste', pasteHandler)
+      pasteHandler = null
+    }
+  }
+
+  function closeSliderPopup() {
+    try {
+      sliderPopup?.close()
+    }
+    catch {
+      // 忽略已关闭的弹窗
+    }
+    sliderPopup = null
+    sliderPopupOpen.value = false
+  }
+
+  /** 自动获取到验证结果 → 填入并提交 */
+  function autoSubmitSlider(raw: string): boolean {
+    const parsed = parseSliderTicket(raw)
+    if (!parsed)
+      return false
+    sliderResultUrl.value = raw
+    stopSliderWatch()
+    void submitSliderUrl()
+    return true
+  }
+
+  /** 打开滑块验证弹窗（不离开面板，状态不丢失） */
+  function openSliderPopup() {
+    if (!sliderUrl.value)
+      return
+    const w = 560
+    const h = 720
+    const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - w) / 2))
+    const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - h) / 2))
+    sliderPopup = window.open(sliderUrl.value, 'mengka_slider', `width=${w},height=${h},left=${left},top=${top}`)
+    if (!sliderPopup) {
+      sliderWatchNote.value = '浏览器拦截了弹出窗口，请允许弹窗后重试'
+      return
+    }
+    sliderPopupOpen.value = true
+    sliderWatchNote.value = '已打开验证窗口，完成滑块后本面板会自动获取结果…'
+    try {
+      sliderPopup.focus()
+    }
+    catch {
+      // 忽略聚焦失败
+    }
+    startSliderWatch()
+  }
+
+  function startSliderWatch() {
+    stopSliderWatch()
+    // a) 轮询弹窗地址：跳转到可读页面时自动提取 ticket/randstr
+    sliderWatchTimer = setInterval(() => {
+      if (!sliderPopup) {
+        stopSliderWatch()
+        return
+      }
+      try {
+        if (sliderPopup.closed) {
+          sliderPopupOpen.value = false
+          stopSliderWatch()
+          sliderWatchNote.value = '验证窗口已关闭：若已完成验证，请在下方粘贴完成后地址栏的链接提交，或重新打开窗口'
+          return
+        }
+        const href = sliderPopup.location.href
+        if (href && autoSubmitSlider(href)) {
+          closeSliderPopup()
+          sliderWatchNote.value = ''
+        }
+      }
+      catch {
+        // 弹窗仍在跨域的滑块页，等待其跳转
+      }
+    }, 800)
+    // b) 粘贴嗅探：复制完成链接后面板任意处 Ctrl+V 即自动填入并提交
+    pasteHandler = (event: ClipboardEvent) => {
+      if (step.value !== 'slider')
+        return
+      const text = event.clipboardData?.getData('text') || ''
+      if (!text)
+        return
+      if (parseSliderTicket(text)) {
+        event.preventDefault()
+        autoSubmitSlider(text)
+      }
+    }
+    window.addEventListener('paste', pasteHandler)
+  }
+
+  // 离开滑块步骤时自动收尾（登录成功/重置/切步骤）
+  watch(step, (value) => {
+    if (value !== 'slider') {
+      stopSliderWatch()
+      closeSliderPopup()
+      sliderWatchNote.value = ''
+    }
+  })
+
+  /** 提交滑块验证结果（自动获取或手动粘贴共用） */
   async function submitSliderUrl() {
     const target = pendingQq.value
     if (!target)
       return
-    const raw = sliderResultUrl.value.trim()
-    const ticket = raw.match(/[?&]ticket=([^&\s]+)/)?.[1]
-    const randstr = raw.match(/[?&]randstr=([^&\s]+)/)?.[1]
-    if (!ticket || !randstr) {
-      error.value = '无法从粘贴的链接中解析验证结果，请确认已复制滑块完成后的完整地址'
+    const parsed = parseSliderTicket(sliderResultUrl.value)
+    if (!parsed) {
+      error.value = '无法从链接中解析验证结果，请粘贴滑块完成后地址栏的完整地址'
       return
     }
     loading.value = true
@@ -460,11 +609,12 @@ export function useMengkaLogin(options: MengkaLoginOptions = {}) {
     try {
       const payload: any = {
         qq: target,
-        ticket: decodeURIComponent(ticket),
-        randstr: decodeURIComponent(randstr),
+        ticket: parsed.ticket,
+        randstr: parsed.randstr,
       }
       const owner = options.getOwner?.()
-      if (owner) payload.owner = owner
+      if (owner)
+        payload.owner = owner
       const { data } = await api.post('/api/mengka/verify/slider', payload, { timeout: 90000 } as any)
       if (version !== pollVersion)
         return
@@ -505,6 +655,9 @@ export function useMengkaLogin(options: MengkaLoginOptions = {}) {
     smsCode,
     sliderUrl,
     sliderResultUrl,
+    sliderPopupOpen,
+    sliderWatchNote,
+    openSliderPopup,
     identityUrl,
     reset,
     start,

@@ -25,6 +25,9 @@ const props = defineProps<{
     smsCode: string
     sliderUrl: string
     sliderResultUrl: string
+    sliderPopupOpen: boolean
+    sliderWatchNote: string
+    openSliderPopup: () => void
     identityUrl: string
     reset: () => void
     start: () => Promise<void>
@@ -273,21 +276,25 @@ onMounted(() => {
             滑块验证
           </div>
           <div class="mt-1 text-xs opacity-60">
-            1. 点击下方按钮打开滑块页面并完成拖块验证
-          </div>
-          <div class="mt-1 text-xs opacity-60">
-            2. 完成后复制浏览器地址栏的完整链接，粘贴到下面
+            点击下方按钮弹出独立验证小窗，完成拖块后面板会自动获取结果并继续登录，当前页面不会丢失
           </div>
         </div>
-        <BaseButton variant="secondary" block :href="login.sliderUrl" v-if="login.sliderUrl">
-          打开滑块验证页面
+        <BaseButton variant="secondary" block @click="login.openSliderPopup()">
+          {{ login.sliderPopupOpen ? '重新打开验证窗口' : '打开滑块验证窗口' }}
         </BaseButton>
-        <BaseInput
-          v-model="login.sliderResultUrl"
-          label="滑块完成后的链接"
-          placeholder="粘贴完成后地址栏的完整链接"
-          class="farm-input"
-        />
+        <p v-if="login.sliderWatchNote" class="text-xs" style="color: #438d63">
+          {{ login.sliderWatchNote }}
+        </p>
+        <div>
+          <div class="mb-1 text-xs opacity-60">
+            自动获取未生效？将验证完成后地址栏的完整链接粘贴到下方（在页面任意处按 Ctrl+V 也会自动提交）
+          </div>
+          <BaseInput
+            v-model="login.sliderResultUrl"
+            placeholder="粘贴完成后地址栏的完整链接（选填）"
+            class="farm-input"
+          />
+        </div>
         <p v-if="login.error" class="text-sm text-red-500">
           {{ login.error }}
         </p>
@@ -295,7 +302,12 @@ onMounted(() => {
           <BaseButton variant="outline" @click="login.reset(); $emit('close')">
             取消
           </BaseButton>
-          <BaseButton variant="primary" :loading="login.loading" @click="login.submitSliderUrl()">
+          <BaseButton
+            variant="primary"
+            :loading="login.loading"
+            :disabled="!login.sliderResultUrl.trim()"
+            @click="login.submitSliderUrl()"
+          >
             提交验证结果
           </BaseButton>
         </div>
@@ -313,7 +325,7 @@ onMounted(() => {
             该账号需要在萌卡 WebUI 完成身份验证（绑定手机等），面板暂不支持代理此流程。
           </div>
         </div>
-        <BaseButton v-if="login.identityUrl" variant="secondary" block :href="login.identityUrl">
+        <BaseButton v-if="login.identityUrl" variant="secondary" block :href="login.identityUrl" target="_blank" rel="noopener">
           打开身份验证页面
         </BaseButton>
         <div class="flex justify-end gap-2">
