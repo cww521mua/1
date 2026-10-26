@@ -233,7 +233,17 @@ function usableNickname(value: string): string {
 }
 
 // ==================== 萌卡对接 ====================
-interface MengkaBot { selfId: string, nickname: string, clientType: string, online: boolean, owner?: string | null }
+interface MengkaBot {
+  selfId: string
+  nickname: string
+  clientType: string
+  online: boolean
+  status?: number
+  statusText?: string
+  lastActiveMs?: number
+  canManage?: boolean
+  owner?: string | null
+}
 
 const userStore = useUserStore()
 const mengkaEnabled = ref(false)
@@ -253,6 +263,22 @@ const mengkaReloginBot = ref<MengkaBot | null>(null)
 const showUnbindMengkaConfirm = ref(false)
 const unbindMengkaTarget = ref<MengkaBot | null>(null)
 const unbindMengkaLoading = ref(false)
+const showDeleteMengkaConfirm = ref(false)
+const deleteMengkaTarget = ref<MengkaBot | null>(null)
+const deleteMengkaLoading = ref(false)
+
+function fmtBotLastActive(ms?: number): string {
+  if (!ms)
+    return '—'
+  const diff = Date.now() - ms
+  if (diff < 60_000)
+    return '刚刚'
+  if (diff < 3_600_000)
+    return `${Math.floor(diff / 60_000)} 分钟前`
+  if (diff < 86_400_000)
+    return `${Math.floor(diff / 3_600_000)} 小时前`
+  return `${Math.floor(diff / 86_400_000)} 天前`
+}
 
 const mengkaListBots = computed(() => mengkaBots.value.filter(bot => bot.clientType === 'android'))
 
@@ -385,6 +411,37 @@ function closeMengkaLoginPanel() {
 function askUnbindMengka(bot: MengkaBot) {
   unbindMengkaTarget.value = bot
   showUnbindMengkaConfirm.value = true
+}
+
+function askDeleteMengka(bot: MengkaBot) {
+  deleteMengkaTarget.value = bot
+  showDeleteMengkaConfirm.value = true
+}
+
+async function confirmDeleteMengka() {
+  const target = deleteMengkaTarget.value
+  if (!target)
+    return
+  deleteMengkaLoading.value = true
+  try {
+    const { data } = await api.post('/api/mengka/bots/delete', { selfId: target.selfId })
+    if (data?.ok) {
+      showDeleteMengkaConfirm.value = false
+      deleteMengkaTarget.value = null
+      if (mengkaSelectedBot.value === target.selfId)
+        mengkaSelectedBot.value = ''
+      await loadMengkaState()
+    }
+    else {
+      mengkaError.value = getApiErrorMessage(data, '删除萌卡账号失败')
+    }
+  }
+  catch (e: any) {
+    mengkaError.value = getApiErrorMessage(e, '删除萌卡账号失败')
+  }
+  finally {
+    deleteMengkaLoading.value = false
+  }
 }
 
 async function confirmUnbindMengka() {
@@ -1311,6 +1368,9 @@ onBeforeUnmount(() => {
                   <p class="mt-0.5 text-xs opacity-60">
                     QQ {{ bot.selfId }}
                   </p>
+                  <p class="mt-0.5 text-xs opacity-60">
+                    {{ bot.statusText || (bot.online ? '在线' : '离线') }} · 最后活跃 {{ fmtBotLastActive(bot.lastActiveMs) }}
+                  </p>
                 </div>
                 <div class="flex flex-none items-center gap-1.5">
                   <BaseButton
@@ -1323,6 +1383,16 @@ onBeforeUnmount(() => {
                   </BaseButton>
                   <BaseButton variant="ghost" size="sm" @click.stop="askUnbindMengka(bot)">
                     解绑
+                  </BaseButton>
+                  <BaseButton
+                    v-if="bot.canManage !== false"
+                    variant="ghost"
+                    size="sm"
+                    class="text-red-500 dark:text-red-400"
+                    title="删除该萌卡账号"
+                    @click.stop="askDeleteMengka(bot)"
+                  >
+                    <span class="i-carbon-trash-can" />
                   </BaseButton>
                 </div>
               </div>
@@ -1592,6 +1662,19 @@ onBeforeUnmount(() => {
     @close="!unbindMengkaLoading && (showUnbindMengkaConfirm = false)"
     @cancel="!unbindMengkaLoading && (showUnbindMengkaConfirm = false)"
     @confirm="confirmUnbindMengka"
+  />
+
+  <!-- 萌卡账号删除确认（框架删除 + 解绑 + 撤授权，不可恢复） -->
+  <ConfirmModal
+    :show="showDeleteMengkaConfirm"
+    :loading="deleteMengkaLoading"
+    title="删除萌卡账号"
+    :message="deleteMengkaTarget ? `确定要删除萌卡账号 ${deleteMengkaTarget.nickname || deleteMengkaTarget.selfId}（${deleteMengkaTarget.selfId}）吗？框架内的登录数据将被移除，绑定与授权同时解除，此操作不可恢复！` : ''"
+    confirm-text="删除"
+    type="danger"
+    @close="!deleteMengkaLoading && (showDeleteMengkaConfirm = false)"
+    @cancel="!deleteMengkaLoading && (showDeleteMengkaConfirm = false)"
+    @confirm="confirmDeleteMengka"
   />
 </template>
 
