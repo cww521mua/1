@@ -190,6 +190,8 @@ function startAdminServer(dataProvider: any): void {
              return res.status(404).json({ ok: false, error: 'Not Found' });
         }
         if (fs.existsSync(webDist)) {
+            // 入口 HTML 一律禁止缓存，避免浏览器驻留旧前端
+            res.setHeader('Cache-Control', 'no-cache');
             res.sendFile(path.join(webDist, 'index.html'));
         } else {
             res.status(404).send('web build not found. Please build the web project.');
