@@ -266,6 +266,9 @@ const unbindMengkaLoading = ref(false)
 const showDeleteMengkaConfirm = ref(false)
 const deleteMengkaTarget = ref<MengkaBot | null>(null)
 const deleteMengkaLoading = ref(false)
+const showCancelMengkaConfirm = ref(false)
+const cancelMengkaTarget = ref<MengkaBot | null>(null)
+const cancelMengkaLoading = ref(false)
 
 function fmtBotLastActive(ms?: number): string {
   if (!ms)
@@ -441,6 +444,36 @@ async function confirmDeleteMengka() {
   }
   finally {
     deleteMengkaLoading.value = false
+  }
+}
+
+function askCancelMengka(bot: MengkaBot) {
+  cancelMengkaTarget.value = bot
+  showCancelMengkaConfirm.value = true
+}
+
+/** 取消卡在验证中的登录会话（验证中途放弃的账号：无法删除也无法重登时用） */
+async function confirmCancelMengka() {
+  const target = cancelMengkaTarget.value
+  if (!target)
+    return
+  cancelMengkaLoading.value = true
+  try {
+    const { data } = await api.post('/api/mengka/bots/cancel', { selfId: target.selfId })
+    if (data?.ok) {
+      showCancelMengkaConfirm.value = false
+      cancelMengkaTarget.value = null
+      await loadMengkaState()
+    }
+    else {
+      mengkaError.value = getApiErrorMessage(data, '取消登录失败')
+    }
+  }
+  catch (e: any) {
+    mengkaError.value = getApiErrorMessage(e, '取消登录失败')
+  }
+  finally {
+    cancelMengkaLoading.value = false
   }
 }
 
@@ -1374,6 +1407,15 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="flex flex-none items-center gap-1.5">
                   <BaseButton
+                    v-if="bot.status === 2"
+                    variant="outline"
+                    size="sm"
+                    title="账号卡在验证流程中时，取消登录会话后即可重新登录或删除"
+                    @click.stop="askCancelMengka(bot)"
+                  >
+                    取消登录
+                  </BaseButton>
+                  <BaseButton
                     v-if="!bot.online"
                     variant="outline"
                     size="sm"
@@ -1675,6 +1717,17 @@ onBeforeUnmount(() => {
     @close="!deleteMengkaLoading && (showDeleteMengkaConfirm = false)"
     @cancel="!deleteMengkaLoading && (showDeleteMengkaConfirm = false)"
     @confirm="confirmDeleteMengka"
+  />
+  <ConfirmModal
+    :show="showCancelMengkaConfirm"
+    :loading="cancelMengkaLoading"
+    title="取消登录"
+    :message="cancelMengkaTarget ? `确定要取消萌卡账号 ${cancelMengkaTarget.nickname || cancelMengkaTarget.selfId}（${cancelMengkaTarget.selfId}）正在进行的登录吗？取消后可重新登录或删除该账号。` : ''"
+    confirm-text="取消登录"
+    type="primary"
+    @close="!cancelMengkaLoading && (showCancelMengkaConfirm = false)"
+    @cancel="!cancelMengkaLoading && (showCancelMengkaConfirm = false)"
+    @confirm="confirmCancelMengka"
   />
 </template>
 

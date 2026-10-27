@@ -10,6 +10,7 @@ export {};
  * - POST /api/mengka/login-qr/start       发起 QQ 扫码登录进萌卡（登录用户）
  * - POST /api/mengka/login-qr/poll        轮询扫码状态，确认后写绑定与租约（登录用户）
  * - POST /api/mengka/relogin              重新登录掉线的萌卡账号（登录用户，校验归属）
+ * - POST /api/mengka/bots/cancel          取消萌卡账号进行中的登录会话（绑定本人或超管）
  * - GET  /api/mengka/protocols            可选登录协议列表（Android Phone）
  * - POST /api/mengka/verify/methods       查询安全验证方式（短信/扫码）
  * - POST /api/mengka/verify/sms           请求短信验证（4=接收验证码 / 3=发送短信）
@@ -290,6 +291,11 @@ async function syncAccountPassword(selfId: string, password: string): Promise<vo
         client_type: 'android',
     }, ADD_ACCOUNT_TIMEOUT_MS);
     mengkaLogger.info('萌卡账号密码已更新', { selfId });
+}
+
+/** 停止萌卡账号进行中的登录会话（stop_account_login），用于取消卡在验证中的登录。 */
+async function stopAccountLogin(selfId: string): Promise<void> {
+    await mengka.callAction('stop_account_login', { self_id: Number(selfId) }, VERIFY_TIMEOUT_MS);
 }
 
 function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
@@ -887,6 +893,31 @@ function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
         })();
     });
 
+    // 取消萌卡账号进行中的登录会话（验证中途放弃的卡住账号：status=2 需要安全验证等）
+    app.post('/api/mengka/bots/cancel', (req: Request, res: Response) => {
+        (async () => {
+            if (!ensureMengkaEnabled(res)) return;
+            const selfId = String(req.body?.selfId || '').trim();
+            if (!/^\d{5,12}$/.test(selfId)) {
+                return res.status(400).json({ ok: false, error: '无效的 QQ 号' });
+            }
+            const identity = getIdentity(ctx, req);
+            const binding = store.findMengkaBinding(selfId);
+            if (!isAdminIdentity(identity)) {
+                if (!binding || binding.owner !== identity.username) {
+                    return res.status(403).json({ ok: false, error: '无权操作该萌卡账号' });
+                }
+            }
+            try {
+                await stopAccountLogin(selfId);
+                mengkaLogger.info('萌卡账号登录会话已取消', { selfId, by: identity.username });
+                res.json({ ok: true, data: { stopped: true } });
+            } catch (e: any) {
+                handleApiError(res, e);
+            }
+        })();
+    });
+
     // 删除萌卡账号：框架删除 + 解除绑定 + 撤销授权（绑定本人或超管；未绑定账号仅超管可删）
     app.post('/api/mengka/bots/delete', (req: Request, res: Response) => {
         (async () => {
@@ -905,9 +936,20 @@ function mountMengkaRoutes(app: Application, ctx: AdminContext): void {
             try {
                 await mengka.callAction('delete_account', { self_id: Number(selfId) }, LOGIN_TIMEOUT_MS);
             } catch (e: any) {
+                const message = String(e?.message || '');
                 // 框架中不存在（如已手动删除）视为成功，继续清理面板侧数据
-                if (!/不存在|not\s*found/i.test(String(e?.message))) {
-                    return handleApiError(res, e);
+                if (!/不存在|not\s*found/i.test(message)) {
+                    // 登录中途取消的卡住账号：先停止登录会话再重试删除
+                    if (/正在运行|running/i.test(message)) {
+                        try {
+                            await stopAccountLogin(selfId);
+                            await mengka.callAction('delete_account', { self_id: Number(selfId) }, LOGIN_TIMEOUT_MS);
+                        } catch (retryErr: any) {
+                            return handleApiError(res, retryErr);
+                        }
+                    } else {
+                        return handleApiError(res, e);
+                    }
                 }
             }
             if (binding) {
