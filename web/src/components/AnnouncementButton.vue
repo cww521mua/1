@@ -81,7 +81,7 @@ onBeforeUnmount(() => {
     <template #trigger>
       <NButton quaternary circle title="系统公告" aria-label="查看系统公告">
         <span class="relative inline-flex">
-          <span class="text-lg i-carbon-announcement" />
+          <span class="text-lg i-carbon-bullhorn" />
           <span
             v-if="hasUnread"
             class="absolute h-2 w-2 rounded-full bg-red-500"

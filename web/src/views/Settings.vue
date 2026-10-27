@@ -83,7 +83,7 @@ const adminTabs = [
   { key: 'cards', label: '卡密', icon: 'i-carbon-ticket' },
   { key: 'users', label: '用户', icon: 'i-carbon-user-multiple' },
   { key: 'server', label: '服务器状态', icon: 'i-carbon-monitor' },
-  { key: 'announcements', label: '公告管理', icon: 'i-carbon-announcement' },
+  { key: 'announcements', label: '公告管理', icon: 'i-carbon-bullhorn' },
 ] as const
 
 const userTabs = [

@@ -144,7 +144,7 @@ onMounted(() => {
     <section class="farm-card rounded-lg p-4">
       <div class="mb-4 flex items-start gap-3">
         <div class="h-9 w-9 flex shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-900/25 dark:text-emerald-400">
-          <span class="i-carbon-announcement text-xl" />
+          <span class="i-carbon-bullhorn text-xl" />
         </div>
         <div class="min-w-0">
           <h4 class="text-base text-gray-900 font-bold dark:text-gray-100">
