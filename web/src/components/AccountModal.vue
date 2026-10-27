@@ -1377,19 +1377,21 @@ onBeforeUnmount(() => {
               <div
                 v-for="bot in mengkaListBots"
                 :key="bot.selfId"
-                class="flex items-center justify-between gap-2 border rounded-xl px-3 py-2 text-sm"
+                class="flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border rounded-xl px-3 py-2 text-sm"
                 :style="{ borderColor: mengkaSelectedBot === bot.selfId ? 'var(--theme-primary)' : 'color-mix(in srgb, var(--theme-text) 15%, transparent)' }"
                 role="button"
                 @click="mengkaSelectedBot = bot.selfId"
               >
-                <div class="min-w-0">
+                <div class="min-w-[9rem] flex-1">
                   <div class="flex flex-wrap items-center gap-1.5">
                     <span class="text-sm font-bold">{{ bot.nickname || bot.selfId }}</span>
                     <span
                       class="rounded px-1.5 py-0.5 text-[10px] font-medium leading-tight"
-                      :class="bot.online ? 'bg-green-50 text-green-600 dark:bg-green-900/25 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'"
+                      :class="bot.online
+                        ? 'bg-green-50 text-green-600 dark:bg-green-900/25 dark:text-green-400'
+                        : (bot.status === 2 ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/25 dark:text-amber-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400')"
                     >
-                      {{ bot.online ? '在线' : '离线' }}
+                      {{ bot.online ? '在线' : (bot.status === 2 ? '登录中' : '离线') }}
                     </span>
                     <span
                       v-if="userStore.isAdmin && bot.owner"
@@ -1405,7 +1407,7 @@ onBeforeUnmount(() => {
                     {{ bot.statusText || (bot.online ? '在线' : '离线') }} · 最后活跃 {{ fmtBotLastActive(bot.lastActiveMs) }}
                   </p>
                 </div>
-                <div class="flex flex-none items-center gap-1.5">
+                <div class="flex flex-none flex-wrap items-center justify-end gap-1.5">
                   <BaseButton
                     v-if="bot.status === 2"
                     variant="outline"
@@ -1416,7 +1418,7 @@ onBeforeUnmount(() => {
                     取消登录
                   </BaseButton>
                   <BaseButton
-                    v-if="!bot.online"
+                    v-else-if="!bot.online"
                     variant="outline"
                     size="sm"
                     @click.stop="openMengkaRelogin(bot)"
@@ -1723,7 +1725,7 @@ onBeforeUnmount(() => {
     :loading="cancelMengkaLoading"
     title="取消登录"
     :message="cancelMengkaTarget ? `确定要取消萌卡账号 ${cancelMengkaTarget.nickname || cancelMengkaTarget.selfId}（${cancelMengkaTarget.selfId}）正在进行的登录吗？取消后可重新登录或删除该账号。` : ''"
-    confirm-text="取消登录"
+    confirm-text="确认取消"
     type="primary"
     @close="!cancelMengkaLoading && (showCancelMengkaConfirm = false)"
     @cancel="!cancelMengkaLoading && (showCancelMengkaConfirm = false)"
