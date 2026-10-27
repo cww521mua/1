@@ -25,9 +25,9 @@ const props = defineProps<{
     smsCode: string
     sliderUrl: string
     sliderResultUrl: string
-    sliderPopupOpen: boolean
+    captchaBusy: boolean
     sliderWatchNote: string
-    openSliderPopup: () => void
+    startTencentCaptcha: () => void
     identityUrl: string
     reset: () => void
     start: () => Promise<void>
@@ -276,22 +276,22 @@ onMounted(() => {
             滑块验证
           </div>
           <div class="mt-1 text-xs opacity-60">
-            点击下方按钮弹出独立验证小窗，完成拖块后面板会自动获取结果并继续登录，当前页面不会丢失
+            点击下方按钮，面板会直接弹出腾讯官方滑块，完成拖块后自动提交并继续登录，无需复制任何链接
           </div>
         </div>
-        <BaseButton variant="secondary" block @click="login.openSliderPopup()">
-          {{ login.sliderPopupOpen ? '重新打开验证窗口' : '打开滑块验证窗口' }}
+        <BaseButton variant="secondary" block :loading="login.captchaBusy" @click="login.startTencentCaptcha()">
+          开始滑块验证
         </BaseButton>
         <p v-if="login.sliderWatchNote" class="text-xs" style="color: #438d63">
           {{ login.sliderWatchNote }}
         </p>
         <div>
           <div class="mb-1 text-xs opacity-60">
-            自动获取未生效？将验证完成后地址栏的完整链接粘贴到下方（在页面任意处按 Ctrl+V 也会自动提交）
+            组件加载失败时可用：粘贴包含 ticket 与 randstr 参数的完整链接
           </div>
           <BaseInput
             v-model="login.sliderResultUrl"
-            placeholder="粘贴完成后地址栏的完整链接（选填）"
+            placeholder="粘贴验证结果链接（选填）"
             class="farm-input"
           />
         </div>

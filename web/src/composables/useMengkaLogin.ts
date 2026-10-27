@@ -2,6 +2,16 @@ import { onBeforeUnmount, reactive, ref, watch } from 'vue'
 import QRCode from 'qrcode'
 import api, { getApiErrorMessage } from '@/api'
 
+declare global {
+  interface Window {
+    TencentCaptcha?: new (
+      aid: string,
+      callback: (result: { ret?: number, ticket?: string, randstr?: string }) => void,
+      options?: Record<string, unknown>,
+    ) => { show: () => void, destroy?: () => void }
+  }
+}
+
 export interface MengkaLoginOptions {
   /** 返回扫码登录新 QQ 的归属用户（管理员代操作时）；普通用户无需提供 */
   getOwner?: () => string | undefined
@@ -57,11 +67,9 @@ export function useMengkaLogin(options: MengkaLoginOptions = {}) {
   const smsCode = ref('')
   const sliderResultUrl = ref('')
 
-  // 滑块验证弹窗与自动获取
-  let sliderPopup: Window | null = null
-  let sliderWatchTimer: ReturnType<typeof setInterval> | undefined
+  // 滑块验证：面板内嵌腾讯滑块组件 + 粘贴嗅探兜底
   let pasteHandler: ((e: ClipboardEvent) => void) | null = null
-  const sliderPopupOpen = ref(false)
+  const captchaBusy = ref(false)
   const sliderWatchNote = ref('')
 
   // 登录协议（add 模式可选）
@@ -77,9 +85,9 @@ export function useMengkaLogin(options: MengkaLoginOptions = {}) {
       clearTimeout(pollTimer)
       pollTimer = undefined
     }
-    stopSliderWatch()
-    closeSliderPopup()
+    stopSliderCleanup()
     sliderWatchNote.value = ''
+    captchaBusy.value = false
     step.value = 'idle'
     qq.value = ''
     password.value = ''
@@ -487,130 +495,165 @@ export function useMengkaLogin(options: MengkaLoginOptions = {}) {
     return { ticket: decode(ticket), randstr: decode(randstr) }
   }
 
-  function stopSliderWatch() {
-    if (sliderWatchTimer) {
-      clearInterval(sliderWatchTimer)
-      sliderWatchTimer = undefined
-    }
+  function stopSliderCleanup() {
     if (pasteHandler) {
       window.removeEventListener('paste', pasteHandler)
       pasteHandler = null
     }
   }
 
-  function closeSliderPopup() {
+  /** 从滑块地址中提取腾讯验证参数（兼容萌卡包装页与原始腾讯地址） */
+  function extractCaptchaParams(raw: string): { uin: string, sid: string, aid: string, loginAppid: string } | null {
     try {
-      sliderPopup?.close()
-    }
-    catch {
-      // 忽略已关闭的弹窗
-    }
-    sliderPopup = null
-    sliderPopupOpen.value = false
-  }
-
-  /** 自动获取到验证结果 → 填入并提交 */
-  function autoSubmitSlider(raw: string): boolean {
-    const parsed = parseSliderTicket(raw)
-    if (!parsed)
-      return false
-    sliderResultUrl.value = raw
-    stopSliderWatch()
-    void submitSliderUrl()
-    return true
-  }
-
-  /** 打开滑块验证弹窗（不离开面板，状态不丢失） */
-  function openSliderPopup() {
-    if (!sliderUrl.value)
-      return
-    const w = 560
-    const h = 720
-    const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - w) / 2))
-    const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - h) / 2))
-    sliderPopup = window.open(sliderUrl.value, 'mengka_slider', `width=${w},height=${h},left=${left},top=${top}`)
-    if (!sliderPopup) {
-      sliderWatchNote.value = '浏览器拦截了弹出窗口，请允许弹窗后重试'
-      return
-    }
-    sliderPopupOpen.value = true
-    sliderWatchNote.value = '已打开验证窗口，完成滑块后本面板会自动获取结果…'
-    try {
-      sliderPopup.focus()
-    }
-    catch {
-      // 忽略聚焦失败
-    }
-    startSliderWatch()
-  }
-
-  function startSliderWatch() {
-    stopSliderWatch()
-    // a) 轮询弹窗地址：跳转到可读页面时自动提取 ticket/randstr
-    sliderWatchTimer = setInterval(() => {
-      if (!sliderPopup) {
-        stopSliderWatch()
-        return
-      }
-      try {
-        if (sliderPopup.closed) {
-          sliderPopupOpen.value = false
-          stopSliderWatch()
-          sliderWatchNote.value = '验证窗口已关闭：若已完成验证，请在下方粘贴完成后地址栏的链接提交，或重新打开窗口'
-          return
+      const outer = new URL(raw.trim())
+      let inner = outer.searchParams.get('url') || ''
+      if (inner) {
+        try {
+          inner = decodeURIComponent(inner)
         }
-        const href = sliderPopup.location.href
-        if (href && autoSubmitSlider(href)) {
-          closeSliderPopup()
-          sliderWatchNote.value = ''
+        catch {
+          // 已是明文
         }
       }
-      catch {
-        // 弹窗仍在跨域的滑块页，等待其跳转
+      const target = new URL(inner || outer.href, outer.href)
+      const uin = target.searchParams.get('uin') || ''
+      const sid = target.searchParams.get('sid') || ''
+      if (!uin || !sid)
+        return null
+      return {
+        uin,
+        sid,
+        aid: target.searchParams.get('aid') || '2053843612',
+        loginAppid: target.searchParams.get('login_appid') || '16',
       }
-    }, 800)
-    // b) 粘贴嗅探：复制完成链接后面板任意处 Ctrl+V 即自动填入并提交
+    }
+    catch {
+      return null
+    }
+  }
+
+  let captchaScriptReady = false
+  function loadCaptchaScript(): Promise<void> {
+    if (captchaScriptReady && window.TencentCaptcha)
+      return Promise.resolve()
+    return new Promise((resolve, reject) => {
+      const tryLoad = (src: string, fallback?: string) => {
+        const script = document.createElement('script')
+        script.src = src
+        script.onload = () => {
+          if (window.TencentCaptcha) {
+            captchaScriptReady = true
+            resolve()
+          }
+          else if (fallback) {
+            tryLoad(fallback)
+          }
+          else {
+            reject(new Error('captcha script loaded but TencentCaptcha missing'))
+          }
+        }
+        script.onerror = () => {
+          if (fallback) tryLoad(fallback)
+          else reject(new Error('captcha script load failed'))
+        }
+        document.head.appendChild(script)
+      }
+      tryLoad('https://captcha.gtimg.com/TCaptcha.js', 'https://ssl.captcha.qq.com/TCaptcha.js')
+    })
+  }
+
+  /** 面板内直接拉起腾讯官方滑块，完成后自动提交 */
+  async function startTencentCaptcha() {
+    const target = pendingQq.value
+    if (!target || !sliderUrl.value)
+      return
+    const params = extractCaptchaParams(sliderUrl.value)
+    if (!params) {
+      sliderWatchNote.value = '无法从验证地址提取验证参数，请使用下方手动粘贴方式'
+      return
+    }
+    captchaBusy.value = true
+    error.value = ''
+    sliderWatchNote.value = '正在加载滑块组件…'
+    try {
+      await loadCaptchaScript()
+    }
+    catch {
+      captchaBusy.value = false
+      sliderWatchNote.value = '滑块组件加载失败，请检查网络后重试，或使用下方手动粘贴方式'
+      return
+    }
+    sliderWatchNote.value = '完成拖块后面板会自动提交并继续登录，无需复制链接'
+    try {
+      const captcha = new window.TencentCaptcha!(params.aid, (result: any) => {
+        captchaBusy.value = false
+        if (result && typeof result.ticket === 'string' && result.ticket) {
+          void submitSliderTicket(String(result.ticket), String(result.randstr || ''))
+        }
+        else {
+          sliderWatchNote.value = '验证未完成，可重新点击按钮再次验证'
+        }
+      }, {
+        type: 'full',
+        showHeader: false,
+        login_appid: params.loginAppid,
+        uin: params.uin,
+        sid: params.sid,
+        enableAged: true,
+      })
+      captcha.show()
+    }
+    catch {
+      captchaBusy.value = false
+      sliderWatchNote.value = '滑块组件启动失败，请重试或使用下方手动粘贴方式'
+    }
+  }
+
+  /** 粘贴嗅探：复制结果链接后面板任意处 Ctrl+V 即自动填入并提交 */
+  function installPasteSniffer() {
+    if (pasteHandler)
+      return
     pasteHandler = (event: ClipboardEvent) => {
       if (step.value !== 'slider')
         return
       const text = event.clipboardData?.getData('text') || ''
       if (!text)
         return
-      if (parseSliderTicket(text)) {
+      const parsed = parseSliderTicket(text)
+      if (parsed) {
         event.preventDefault()
-        autoSubmitSlider(text)
+        sliderResultUrl.value = text
+        void submitSliderTicket(parsed.ticket, parsed.randstr)
       }
     }
     window.addEventListener('paste', pasteHandler)
   }
 
-  // 离开滑块步骤时自动收尾（登录成功/重置/切步骤）
+  // 进入滑块步骤时安装嗅探，离开时收尾（登录成功/重置/切步骤）
   watch(step, (value) => {
-    if (value !== 'slider') {
-      stopSliderWatch()
-      closeSliderPopup()
+    if (value === 'slider') {
+      installPasteSniffer()
+    }
+    else {
+      stopSliderCleanup()
       sliderWatchNote.value = ''
+      captchaBusy.value = false
     }
   })
 
-  /** 提交滑块验证结果（自动获取或手动粘贴共用） */
-  async function submitSliderUrl() {
+  /** 提交滑块验证结果（官方组件回调与手动粘贴共用） */
+  async function submitSliderTicket(ticket: string, randstr: string) {
     const target = pendingQq.value
     if (!target)
       return
-    const parsed = parseSliderTicket(sliderResultUrl.value)
-    if (!parsed) {
-      error.value = '无法从链接中解析验证结果，请粘贴滑块完成后地址栏的完整地址'
-      return
-    }
     loading.value = true
     error.value = ''
     const version = ++pollVersion
     try {
       const payload: any = {
         qq: target,
-        ticket: parsed.ticket,
-        randstr: parsed.randstr,
+        ticket,
+        randstr,
       }
       const owner = options.getOwner?.()
       if (owner)
@@ -636,6 +679,16 @@ export function useMengkaLogin(options: MengkaLoginOptions = {}) {
     }
   }
 
+  /** 手动粘贴路径：解析链接后提交 */
+  async function submitSliderUrl() {
+    const parsed = parseSliderTicket(sliderResultUrl.value)
+    if (!parsed) {
+      error.value = '无法从链接中解析验证结果，请确认粘贴的是包含 ticket 与 randstr 参数的完整地址'
+      return
+    }
+    await submitSliderTicket(parsed.ticket, parsed.randstr)
+  }
+
   onBeforeUnmount(reset)
 
   // reactive 包装使模板中嵌套 ref 自动解包（mengkaLogin.step / mengkaLogin.loading 等）
@@ -655,9 +708,9 @@ export function useMengkaLogin(options: MengkaLoginOptions = {}) {
     smsCode,
     sliderUrl,
     sliderResultUrl,
-    sliderPopupOpen,
+    captchaBusy,
     sliderWatchNote,
-    openSliderPopup,
+    startTencentCaptcha,
     identityUrl,
     reset,
     start,
