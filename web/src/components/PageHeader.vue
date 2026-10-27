@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import ThemeSwitcher from '@/components/ThemeSwitcher.vue'
+import AnnouncementButton from '@/components/AnnouncementButton.vue'
 import { menuRoutes } from '@/router/menu'
 import { useAppStore } from '@/stores/app'
 
@@ -38,6 +39,7 @@ function toggleNavigation() {
       </h1>
     </div>
     <div class="flex shrink-0 items-center gap-1">
+      <AnnouncementButton />
       <ThemeSwitcher />
       <NButton quaternary circle aria-controls="app-sidebar" :aria-expanded="navigationExpanded" :aria-label="navigationToggleLabel" :title="navigationToggleLabel" @click="toggleNavigation">
         <div class="text-xl" :class="navigationIcon" />

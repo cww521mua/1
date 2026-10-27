@@ -15,6 +15,7 @@ import CardKeyPanel from '@/components/settings/CardKeyPanel.vue'
 import HomePageSettings from '@/components/settings/HomePageSettings.vue'
 import LoginSettingsPanel from '@/components/settings/LoginSettingsPanel.vue'
 import ServerStatusPanel from '@/components/settings/ServerStatusPanel.vue'
+import AnnouncementPanel from '@/components/settings/AnnouncementPanel.vue'
 import UserAccountPanel from '@/components/settings/UserAccountPanel.vue'
 import UsersPanel from '@/components/settings/UsersPanel.vue'
 import BaseButton from '@/components/ui/BaseButton.vue'
@@ -43,9 +44,9 @@ const brandStore = useBrandStore()
 const settingStore = useSettingStore()
 const statusStore = useStatusStore()
 
-type SettingsTab = 'account' | 'strategy' | 'automation' | 'system' | 'login' | 'home' | 'cards' | 'users' | 'server' | 'profile'
+type SettingsTab = 'account' | 'strategy' | 'automation' | 'system' | 'login' | 'home' | 'cards' | 'users' | 'server' | 'announcements' | 'profile'
 const { isAdmin } = storeToRefs(userStore)
-const adminTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'system', 'login', 'home', 'cards', 'users', 'server']
+const adminTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'system', 'login', 'home', 'cards', 'users', 'server', 'announcements']
 const userTabKeys: SettingsTab[] = ['account', 'strategy', 'automation', 'profile']
 const settingsTabKeys: SettingsTab[] = isAdmin.value ? adminTabKeys : userTabKeys
 const storedTab = localStorage.getItem('settings-active-tab')
@@ -82,6 +83,7 @@ const adminTabs = [
   { key: 'cards', label: '卡密', icon: 'i-carbon-ticket' },
   { key: 'users', label: '用户', icon: 'i-carbon-user-multiple' },
   { key: 'server', label: '服务器状态', icon: 'i-carbon-monitor' },
+  { key: 'announcements', label: '公告管理', icon: 'i-carbon-announcement' },
 ] as const
 
 const userTabs = [
@@ -2230,6 +2232,7 @@ async function handleResetSystemConfig() {
 
         <!-- 服务器状态 -->
         <ServerStatusPanel v-else-if="activeTab === 'server'" />
+        <AnnouncementPanel v-else-if="activeTab === 'announcements'" />
 
         <!-- 账户中心（普通用户） -->
         <UserAccountPanel v-else-if="activeTab === 'profile'" />
