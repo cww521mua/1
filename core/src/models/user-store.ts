@@ -309,6 +309,33 @@ function validateUser(username: unknown, password: unknown, ip: string = 'unknow
 }
 
 /**
+ * 登录页续费身份校验：校验用户名与密码（忽略到期状态，到期账号也允许续费）。
+ * 与 validateUser 一致地应用 IP 限流与失败锁定，防止暴力猜密码烧卡。
+ */
+function verifyUserForRenew(username: unknown, password: unknown, ip: string = 'unknown'): any {
+    security.loadLoginAttempts();
+    const rateLimit = security.checkRateLimit(ip);
+    if (!rateLimit.allowed) {
+        return { ok: false, error: 'rate_limit', message: '请求过于频繁，请稍后重试', remainingMs: rateLimit.remainingMs };
+    }
+    const name = String(username || '').trim();
+    const lockout = checkUserLockout(name);
+    if (lockout.locked) return { ok: false, error: 'locked', message: lockout.message };
+    const user = loadUsers().users.find(item => item.username === name);
+    if (!user || !security.verifyPassword(String(password || ''), user.password)) {
+        const attempt = recordUserFailedAttempt(name);
+        return attempt.locked
+            ? { ok: false, error: 'locked', message: attempt.message }
+            : { ok: false, error: 'invalid_credentials', message: `用户名或密码错误，剩余尝试次数: ${attempt.remainingAttempts}` };
+    }
+    if (!user.enabled) {
+        return { ok: false, error: 'disabled', message: '账号已被管理员停用，请联系管理员' };
+    }
+    clearUserFailedAttempts(name);
+    return { ok: true, user };
+}
+
+/**
  * 使用卡密续费：时间卡叠加有效期，额度卡提升账号上限。
  */
 function renewUser(username: unknown, cardCode: unknown): any {
@@ -689,6 +716,7 @@ module.exports = {
     registerTrialUser,
     registerUserByReferral,
     validateUser,
+    verifyUserForRenew,
     renewUser,
     getAllUsers,
     findUser,

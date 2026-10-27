@@ -18,7 +18,7 @@ const userStore = useUserStore()
 const brandStore = useBrandStore()
 const brand = computed(() => brandStore.brand)
 const route = useRoute()
-const mode = ref<'login' | 'register'>(props.initialMode === 'register' ? 'register' : 'login')
+const mode = ref<'login' | 'register' | 'renew'>(props.initialMode === 'register' ? 'register' : 'login')
 const registerVia = ref<'card' | 'referral' | 'trial'>('card')
 const trialStatus = ref<{ enabled: boolean, remaining: number }>({ enabled: false, remaining: 0 })
 const refInfo = ref<{ username: string, isAgent: boolean } | null>(null)
@@ -32,6 +32,7 @@ const success = ref('')
 const loading = ref(false)
 const lockoutRemaining = ref(0)
 const rateLimitRemaining = ref(0)
+const lastErrorType = ref('')
 
 const usernameValid = computed(() => {
   const name = username.value
@@ -118,6 +119,17 @@ function validateForm(): boolean {
     error.value = '请输入密码'
     return false
   }
+  if (mode.value === 'renew') {
+    if (!cardCode.value.trim()) {
+      error.value = '请输入卡密'
+      return false
+    }
+    if (!cardCodeValid.value.valid) {
+      error.value = cardCodeValid.value.message
+      return false
+    }
+    return true
+  }
   if (mode.value === 'register') {
     if (!passwordValid.value.valid) {
       error.value = passwordValid.value.message
@@ -145,10 +157,11 @@ function validateForm(): boolean {
   return true
 }
 
-function switchMode(next: 'login' | 'register') {
+function switchMode(next: 'login' | 'register' | 'renew') {
   mode.value = next
   error.value = ''
   success.value = ''
+  lastErrorType.value = ''
   password.value = ''
   confirmPassword.value = ''
   if (next === 'register') {
@@ -255,6 +268,30 @@ async function handleSubmit() {
       return
     }
 
+    if (mode.value === 'renew') {
+      const result = await userStore.renewOffline(username.value.trim(), password.value, cardCode.value.trim().toUpperCase())
+      if (result.ok) {
+        success.value = '续费成功，正在进入面板'
+        setTimeout(() => {
+          window.location.href = '/dashboard'
+        }, 600)
+      }
+      else if (result.errorType === 'rate_limit') {
+        error.value = result.error || '请求过于频繁，请稍后重试'
+        if (result.remainingMs)
+          rateLimitRemaining.value = Math.ceil(result.remainingMs / 1000)
+      }
+      else if (result.errorType === 'locked') {
+        error.value = result.error || '账户已被锁定'
+        if (result.remainingMs)
+          lockoutRemaining.value = Math.ceil(result.remainingMs / 1000 / 60)
+      }
+      else {
+        error.value = result.error || '续费失败'
+      }
+      return
+    }
+
     const result = await userStore.login(username.value, password.value)
     if (result.ok) {
       if (result.data?.mustChangePassword)
@@ -265,32 +302,38 @@ async function handleSubmit() {
       }, 500)
     }
     else if (result.errorType === 'rate_limit') {
+      lastErrorType.value = 'rate_limit'
       error.value = result.error || '请求过于频繁，请稍后重试'
       if (result.remainingMs)
         rateLimitRemaining.value = Math.ceil(result.remainingMs / 1000)
     }
     else if (result.errorType === 'locked') {
+      lastErrorType.value = 'locked'
       error.value = result.error || '账户已被锁定'
       if (result.remainingMs)
         lockoutRemaining.value = Math.ceil(result.remainingMs / 1000 / 60)
     }
     else {
+      lastErrorType.value = result.errorType || ''
       error.value = result.error || '登录失败'
     }
   }
   catch (e: any) {
     const data = e.response?.data
     if (data?.errorType === 'rate_limit') {
+      lastErrorType.value = 'rate_limit'
       error.value = getApiErrorMessage(data, '请求过于频繁')
       if (data.remainingMs)
         rateLimitRemaining.value = Math.ceil(data.remainingMs / 1000)
     }
     else if (data?.errorType === 'locked') {
+      lastErrorType.value = 'locked'
       error.value = getApiErrorMessage(data, '账户已被锁定')
       if (data.remainingMs)
         lockoutRemaining.value = Math.ceil(data.remainingMs / 1000 / 60)
     }
     else {
+      lastErrorType.value = data?.errorType || ''
       error.value = getApiErrorMessage(e, '操作异常')
     }
   }
@@ -384,6 +427,41 @@ onMounted(() => {
             {{ passwordValid.message }}
           </p>
         </div>
+
+        <template v-if="mode === 'renew'">
+          <div class="form-group">
+            <label class="form-label" for="renew-card-code">
+              <span class="i-carbon-ticket" />
+              卡密
+            </label>
+            <BaseInput
+              id="renew-card-code"
+              v-model="cardCode"
+              type="text"
+              placeholder="请输入 16 位卡密"
+              required
+            />
+            <p v-if="cardCode && !cardCodeValid.valid" class="form-hint error">
+              {{ cardCodeValid.message }}
+            </p>
+            <a
+              v-if="brand.purchaseText && brand.purchaseUrl"
+              :href="brand.purchaseUrl"
+              target="_blank"
+              rel="noopener"
+              class="purchase-link"
+            >
+              <span class="i-carbon-shopping-cart" />
+              {{ brand.purchaseText }}
+            </a>
+          </div>
+          <div class="message success-message" role="status">
+            <span class="i-carbon-information" />
+            <div>
+              到期账号核销时间卡后立即恢复登录；额度卡用于提升账号数量上限
+            </div>
+          </div>
+        </template>
 
         <template v-if="mode === 'register'">
           <div class="form-group">
@@ -482,6 +560,15 @@ onMounted(() => {
             <span v-if="rateLimitRemaining > 0">（{{ rateLimitRemaining }} 秒后可重试）</span>
           </div>
         </div>
+        <button
+          v-if="mode === 'login' && lastErrorType === 'expired'"
+          type="button"
+          class="trial-entry"
+          @click="switchMode('renew')"
+        >
+          <span class="i-carbon-ticket" />
+          账号到期？点此使用卡密续费，立即恢复登录
+        </button>
         <div v-if="success" class="message success-message" role="status">
           <span class="i-carbon-checkmark-filled" />
           {{ success }}
@@ -489,20 +576,39 @@ onMounted(() => {
 
         <BaseButton type="submit" variant="primary" block :loading="loading" class="submit-btn">
           <span v-if="!loading" class="inline-flex items-center gap-2">
-            <span :class="mode === 'login' ? 'i-carbon-login' : registerVia === 'trial' ? 'i-carbon-gift' : 'i-carbon-user-follow'" />
-            {{ mode === 'login' ? '登录' : registerVia === 'trial' ? '领取试用并注册' : '注册' }}
+            <span :class="mode === 'login' ? 'i-carbon-login' : mode === 'renew' ? 'i-carbon-renew' : registerVia === 'trial' ? 'i-carbon-gift' : 'i-carbon-user-follow'" />
+            {{ mode === 'login' ? '登录' : mode === 'renew' ? '续费并进入面板' : registerVia === 'trial' ? '领取试用并注册' : '注册' }}
           </span>
         </BaseButton>
       </form>
 
       <div class="mode-switch">
         <button
+          v-if="mode !== 'renew'"
           type="button"
           class="mode-switch__link"
           @click="switchMode(mode === 'login' ? 'register' : 'login')"
         >
           <span :class="mode === 'login' ? 'i-carbon-user-follow' : 'i-carbon-login'" />
           {{ mode === 'login' ? '没有账号？使用卡密注册' : '已有账号？返回登录' }}
+        </button>
+        <button
+          v-else
+          type="button"
+          class="mode-switch__link"
+          @click="switchMode('login')"
+        >
+          <span class="i-carbon-login" />
+          返回登录
+        </button>
+        <button
+          v-if="mode === 'login'"
+          type="button"
+          class="mode-switch__link"
+          @click="switchMode('renew')"
+        >
+          <span class="i-carbon-ticket" />
+          账号到期？使用卡密续费
         </button>
       </div>
     </section>
@@ -684,7 +790,9 @@ onMounted(() => {
 
 .mode-switch {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
+  gap: 4px 12px;
   margin-top: 14px;
 }
 

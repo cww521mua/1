@@ -24,7 +24,7 @@ const {
 const adminLogger = createModuleLogger('admin');
 
 // 公开接口（无需登录）
-const PUBLIC_API_PATHS = new Set(['/login', '/register', '/register/referral', '/register/referral-info', '/register/trial', '/register/trial-status', '/branding', '/branding/icon', '/home-page', '/game-version']);
+const PUBLIC_API_PATHS = new Set(['/login', '/register', '/register/referral', '/register/referral-info', '/register/trial', '/register/trial-status', '/user/renew-offline', '/branding', '/branding/icon', '/home-page', '/game-version']);
 
 function issueIdentityToken(ctx: AdminContext, username: string, role: 'admin' | 'user'): string {
     const token = issueToken();
@@ -295,6 +295,43 @@ function mountAuthRoutes(app: Application, ctx: AdminContext): void {
             return res.json({ ok: true, data: result.user });
         }
         return res.status(400).json({ ok: false, error: '超级管理员无需续费' });
+    });
+
+    // 登录页到期续费（公开接口）：到期账号无法登录时，凭 用户名+密码+卡密 续费并直接恢复登录态
+    app.post('/api/user/renew-offline', (req: Request, res: Response) => {
+        const { username, password, cardCode } = req.body || {};
+        if (!username || !password || !cardCode) {
+            return res.status(400).json({ ok: false, error: '请填写用户名、密码和卡密' });
+        }
+        const clientIp = getClientIp(req);
+        const verified = userStore.verifyUserForRenew(String(username), String(password), clientIp);
+        if (!verified.ok) {
+            adminLogger.warn('登录页续费身份校验失败', { username: String(username), error: verified.error, ip: clientIp });
+            const statusCode = verified.error === 'rate_limit' ? 429 : verified.error === 'locked' ? 423 : 401;
+            return res.status(statusCode).json({
+                ok: false,
+                error: verified.message,
+                errorType: verified.error,
+                remainingMs: verified.remainingMs,
+            });
+        }
+        const result = userStore.renewUser(verified.user.username, String(cardCode));
+        if (!result.ok) {
+            adminLogger.warn('登录页续费核销卡密失败', { username: verified.user.username, error: result.error, ip: clientIp });
+            return res.status(400).json({ ok: false, error: result.error });
+        }
+        const token = issueIdentityToken(ctx, verified.user.username, 'user');
+        adminLogger.info('登录页卡密续费成功', { username: verified.user.username, cardType: result.cardType, ip: clientIp });
+        return res.json({
+            ok: true,
+            data: {
+                token,
+                role: 'user',
+                user: { username: verified.user.username },
+                card: result.user.card,
+                accountLimit: result.user.accountLimit,
+            },
+        });
     });
 }
 

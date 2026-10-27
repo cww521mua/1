@@ -98,6 +98,21 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  async function renewOffline(username: string, password: string, cardCode: string): Promise<LoginResult> {
+    try {
+      const res = await api.post('/api/user/renew-offline', { username, password, cardCode }, { skipErrorToast: true } as any)
+      if (res.data.ok && res.data.data)
+        applyLoginData(res.data.data)
+      return res.data
+    }
+    catch (error: any) {
+      const data = error.response?.data
+      return data
+        ? { ok: false, error: getApiErrorMessage(data, '续费失败'), errorType: data.errorType, remainingMs: data.remainingMs }
+        : { ok: false, error: getApiErrorMessage(error, '续费失败') }
+    }
+  }
+
   async function fetchTrialStatus() {
     try {
       const res = await api.get('/api/register/trial-status', { skipErrorToast: true } as any)
@@ -189,6 +204,7 @@ export const useUserStore = defineStore('user', () => {
     fetchTrialStatus,
     fetchReferralInfo,
     renew,
+    renewOffline,
     logout,
     fetchUserInfo,
     changePassword,
