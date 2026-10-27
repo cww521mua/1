@@ -24,7 +24,7 @@ const {
 const adminLogger = createModuleLogger('admin');
 
 // 公开接口（无需登录）
-const PUBLIC_API_PATHS = new Set(['/login', '/register', '/register/referral', '/register/referral-info', '/register/trial', '/register/trial-status', '/user/renew-offline', '/branding', '/branding/icon', '/home-page', '/game-version']);
+const PUBLIC_API_PATHS = new Set(['/login', '/register', '/register/referral', '/register/referral-info', '/register/trial', '/register/trial-status', '/user/renew-offline', '/video-tutorials', '/branding', '/branding/icon', '/home-page', '/game-version']);
 
 function issueIdentityToken(ctx: AdminContext, username: string, role: 'admin' | 'user'): string {
     const token = issueToken();

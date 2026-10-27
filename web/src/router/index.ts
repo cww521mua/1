@@ -47,6 +47,12 @@ const router = createRouter({
       component: () => import('@/views/Home.vue'),
     },
     {
+      // 视频教程页（公开访问，主页「视频教程」入口）
+      path: '/tutorials',
+      name: 'tutorials',
+      component: () => import('@/views/VideoTutorials.vue'),
+    },
+    {
       path: '/',
       component: () => import('@/layouts/DefaultLayout.vue'),
       children: menuRoutes.map(route => ({
@@ -77,8 +83,8 @@ const router = createRouter({
 router.beforeEach(async (to, _from) => {
   NProgress.start()
 
-  // 主页为公开页面：无论是否登录都直接放行
-  if (to.name === 'home')
+  // 主页与视频教程页为公开页面：无论是否登录都直接放行
+  if (to.name === 'home' || to.name === 'tutorials')
     return true
 
   if (to.name === 'login') {

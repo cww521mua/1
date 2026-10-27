@@ -45,7 +45,7 @@ const DEFAULT_HOME_PAGE: HomePageConfig = {
         highlight: '交给全自动',
         description: '基于 Web 面板的 QQ 农场自动化工具：每账号独立种植与好友策略，自动收获、种植、施肥、偷菜、除虫，支持一键等级加速，图鉴、活动中心、商城与收益分析一站管理，手机电脑随时掌控。',
         primaryText: '立即注册',
-        secondaryText: '查看功能',
+        secondaryText: '视频教程',
         chips: ['全天候自动化', '账号数据独立', '移动端适配', '离线提醒推送'],
     },
     featuresTitle: '从种植到收益，一站托管',

@@ -19,6 +19,7 @@ const userStore = require('../../models/user-store');
 const { createAdminContext } = require('./context');
 const { mountAuthRoutes } = require('./auth-routes');
 const { mountAnnouncementRoutes } = require('./announcement-routes');
+const { mountVideoTutorialRoutes } = require('./video-tutorial-routes');
 const { mountCardRoutes } = require('./card-routes');
 const { mountServerStatusRoutes } = require('./server-status-routes');
 const { mountAdminUserRoutes } = require('./user-routes');
@@ -173,6 +174,7 @@ function startAdminServer(dataProvider: any): void {
     // Mount route modules
     mountAuthRoutes(app, ctx);
     mountAnnouncementRoutes(app, ctx);
+    mountVideoTutorialRoutes(app, ctx);
     mountCardRoutes(app, ctx);
     mountServerStatusRoutes(app, ctx);
     mountAdminUserRoutes(app, ctx);

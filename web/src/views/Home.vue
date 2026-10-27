@@ -32,7 +32,7 @@ const FALLBACK: HomePageData = {
     highlight: '交给全自动',
     description: '基于 Web 面板的 QQ 农场自动化工具：多账号独立策略、全自动种收偷菜、好友互动、图鉴收集、活动中心与收益分析一站管理。',
     primaryText: '立即注册',
-    secondaryText: '查看功能',
+    secondaryText: '视频教程',
     chips: ['全天候自动化', '账号数据独立', '移动端适配', '离线提醒推送'],
   },
   featuresTitle: '从种植到收益，一站托管',
@@ -174,7 +174,7 @@ onBeforeUnmount(() => {
               {{ cfg.hero.primaryText || '立即注册' }}
             </button>
             <RouterLink v-else class="btn btn-primary btn-lg" to="/dashboard">进入面板</RouterLink>
-            <button class="btn btn-ghost btn-lg" @click="scrollToFeatures">{{ cfg.hero.secondaryText }}</button>
+            <button class="btn btn-ghost btn-lg" @click="router.push('/tutorials')">{{ cfg.hero.secondaryText }}</button>
           </div>
           <div class="hero-chips">
             <span v-for="chip in cfg.hero.chips" :key="chip" class="chip">

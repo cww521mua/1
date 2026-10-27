@@ -220,7 +220,7 @@ function showAlertInline(text: string, ok: boolean) {
           <BaseInput v-model="form.hero.chipsText" label="特性标签（用逗号分隔）" type="text" placeholder="全天候自动化，账号数据独立" />
           <BaseTextarea v-model="form.hero.description" label="首屏简介" :rows="3" class="sm:col-span-2" placeholder="面向客户的功能简介" />
           <BaseInput v-model="form.hero.primaryText" label="主按钮文字（未登录）" type="text" placeholder="立即注册" />
-          <BaseInput v-model="form.hero.secondaryText" label="次按钮文字" type="text" placeholder="查看功能" />
+          <BaseInput v-model="form.hero.secondaryText" label="次按钮文字" type="text" placeholder="视频教程" />
         </div>
       </section>
 
