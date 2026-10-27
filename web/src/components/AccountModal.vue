@@ -1120,7 +1120,10 @@ async function copyCaptureValue(field: 'host' | 'port') {
       textarea.style.position = 'fixed'
       textarea.style.opacity = '0'
       document.body.appendChild(textarea)
+      // Modal 容器会管理焦点：先聚焦再选中，否则选区被夺走导致 execCommand 复制空内容
+      textarea.focus()
       textarea.select()
+      textarea.setSelectionRange(0, value.length)
       copied = document.execCommand('copy')
       textarea.remove()
     }

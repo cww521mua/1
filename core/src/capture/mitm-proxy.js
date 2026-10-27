@@ -84,34 +84,46 @@ function createMitmProxyManager(deps = {}) {
   const activeServers = new Map(); // sessionId -> { port, servers, stop, autoStopTimer }
 
   async function listenOnConfiguredPort(bindTargets, handler) {
-    const port = Number(config.proxyPortFrom) || 18000;
+    // 端口池：从 proxyPortFrom 到 proxyPortTo 依次尝试，跳过已被其他会话占用的端口，
+    // 支持多用户同时抓包（每个会话独占一个代理端口）
+    const from = Number(config.proxyPortFrom) || 18000;
+    const to = Math.max(Number(config.proxyPortTo) || from, from);
+    const busy = new Set([...activeServers.values()].map(entry => entry.port));
     const servers = [];
+    let lastError = null;
 
-    for (const bindIp of bindTargets) {
-      const server = net.createServer(handler);
-      server.on('error', () => {});
-      try {
-        await new Promise((resolve, reject) => {
-          const onError = (error) => {
-            server.removeListener('listening', onListening);
-            reject(error);
-          };
-          const onListening = () => {
-            server.removeListener('error', onError);
-            resolve();
-          };
-          server.once('error', onError);
-          server.once('listening', onListening);
-          server.listen(port, bindIp);
-        });
-        servers.push(server);
-      } catch (error) {
-        for (const s of servers) s.close();
-        throw new Error(`代理端口 ${port} 不可用: ${error.message}`);
+    for (let port = from; port <= to; port++) {
+      if (busy.has(port)) continue;
+      servers.length = 0;
+      let bound = true;
+      for (const bindIp of bindTargets) {
+        const server = net.createServer(handler);
+        server.on('error', () => {});
+        try {
+          await new Promise((resolve, reject) => {
+            const onError = (error) => {
+              server.removeListener('listening', onListening);
+              reject(error);
+            };
+            const onListening = () => {
+              server.removeListener('error', onError);
+              resolve();
+            };
+            server.once('error', onError);
+            server.once('listening', onListening);
+            server.listen(port, bindIp);
+          });
+          servers.push(server);
+        } catch (error) {
+          for (const s of servers) s.close();
+          bound = false;
+          lastError = error;
+          break;
+        }
       }
+      if (bound) return { port, servers };
     }
-
-    return { port, servers };
+    throw new Error(`代理端口池 ${from}-${to} 均不可用${lastError ? `: ${lastError.message}` : ''}`);
   }
 
   /**

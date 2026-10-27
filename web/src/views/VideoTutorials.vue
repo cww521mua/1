@@ -91,7 +91,11 @@ onMounted(async () => {
 
 <style scoped>
 .tutorials-page {
-  min-height: 100dvh;
+  /* 全局 html/body 为 overflow:hidden，页面自身承载滚动 */
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   color: var(--ui-ink);
   background-color: var(--ui-bg);
   background-image:

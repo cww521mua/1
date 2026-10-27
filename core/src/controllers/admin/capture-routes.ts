@@ -375,8 +375,12 @@ async function stopCaptureBeforeAccountStart(flow: any, start: () => void): Prom
     start();
 }
 
-async function removeExistingFlows(): Promise<void> {
-    const existing = [...captureFlows.values()].filter((flow) => !flow.completed);
+/**
+ * 清理指定用户的未完成抓包流程（同一用户重新开始时替换自己的旧会话）；
+ * 不影响其他用户正在进行中的抓包会话，保证多用户可同时抓包。
+ */
+async function removeExistingFlows(ownerUsername: string): Promise<void> {
+    const existing = [...captureFlows.values()].filter(flow => !flow.completed && flow.owner === ownerUsername);
     for (const flow of existing) {
         await stopRemoteFlow(flow);
         captureFlows.delete(flow.id);
@@ -476,7 +480,8 @@ function mountCaptureRoutes(app: Application, ctx: AdminContext): void {
             if (!config.enabled || config.embedded === false || !isEmbeddedMode()) {
                 return res.status(403).json({ ok: false, error: '抓包登录添加账号未启用' });
             }
-            await removeExistingFlows();
+            // 仅清理当前用户自己的未完成流程，其他用户的抓包会话不受影响
+            await removeExistingFlows(getIdentity(ctx, req).username);
 
             const flowId = crypto.randomBytes(18).toString('base64url');
             const remoteSessionId = crypto.randomBytes(18).toString('base64url');
@@ -490,6 +495,7 @@ function mountCaptureRoutes(app: Application, ctx: AdminContext): void {
                 remoteSessionId,
                 certificateToken: crypto.randomBytes(24).toString('base64url'),
                 accountId,
+                owner: getIdentity(ctx, req).username,
                 platform,
                 code: '',
                 accountGid: '',

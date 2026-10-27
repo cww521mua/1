@@ -28,8 +28,9 @@ const DEFAULT_CONFIG = Object.freeze({
   proxyBind: ['0.0.0.0'],
   advertiseIps: ['auto'],
   preferOrder: ['tailscale', 'lan', 'other'],
+  /** 代理端口池：每个抓包会话从池中取一个空闲端口，支持多用户同时抓包 */
   proxyPortFrom: 18000,
-  proxyPortTo: 18000,
+  proxyPortTo: 18019,
   captureHosts: [
     '*.nqf.qq.com',
     'q.qq.com',
@@ -69,7 +70,7 @@ function parsePortRange(value, fallbackFrom, fallbackTo) {
   if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1024 || to > 65535 || from > to) {
     return { from: Number(fallbackFrom), to: Number(fallbackTo) };
   }
-  return { from, to: from };
+  return { from, to };
 }
 
 function applyEnvOverrides(config) {
@@ -99,7 +100,10 @@ function applyEnvOverrides(config) {
 
 function normalizeConfig(raw) {
   const input = raw && typeof raw === 'object' ? raw : {};
-  const proxyPort = Number.parseInt(input.proxyPortFrom ?? DEFAULT_CONFIG.proxyPortFrom, 10) || DEFAULT_CONFIG.proxyPortFrom;
+  const proxyPortFrom = Number.parseInt(input.proxyPortFrom ?? DEFAULT_CONFIG.proxyPortFrom, 10) || DEFAULT_CONFIG.proxyPortFrom;
+  // 兼容旧配置（只有 proxyPortFrom）：未显式配置池上限时使用默认池（18000-18019）
+  let proxyPortTo = Number.parseInt(input.proxyPortTo ?? DEFAULT_CONFIG.proxyPortTo, 10) || DEFAULT_CONFIG.proxyPortTo;
+  if (proxyPortTo < proxyPortFrom) proxyPortTo = proxyPortFrom;
   return {
     ...DEFAULT_CONFIG,
     ...input,
@@ -110,8 +114,8 @@ function normalizeConfig(raw) {
     advertiseIps: splitList(input.advertiseIps ?? DEFAULT_CONFIG.advertiseIps),
     preferOrder: splitList(input.preferOrder ?? DEFAULT_CONFIG.preferOrder),
     captureHosts: splitList(input.captureHosts ?? DEFAULT_CONFIG.captureHosts),
-    proxyPortFrom: proxyPort,
-    proxyPortTo: proxyPort,
+    proxyPortFrom,
+    proxyPortTo,
     autoStopSec: Math.max(60, Number.parseInt(input.autoStopSec ?? DEFAULT_CONFIG.autoStopSec, 10) || DEFAULT_CONFIG.autoStopSec),
     sessionTtlMs: Math.max(60_000, Number.parseInt(input.sessionTtlMs ?? DEFAULT_CONFIG.sessionTtlMs, 10) || DEFAULT_CONFIG.sessionTtlMs),
     logLevel: String(input.logLevel ?? DEFAULT_CONFIG.logLevel),
